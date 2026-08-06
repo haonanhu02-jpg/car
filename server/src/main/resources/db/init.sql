@@ -149,9 +149,9 @@ CREATE TABLE IF NOT EXISTS `reminder_config` (
 -- ─────────────────────────────────────────
 
 -- 默认管理员账号: admin / admin123
-INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '张姐', 'ADMIN'),
-('viewer', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '李四', 'VIEWER');
+INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`, `phone`) VALUES
+('admin', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '张姐', 'ADMIN', '13800000001'),
+('viewer', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '李四', 'VIEWER', '13800000002');
 
 -- 默认提醒规则
 INSERT INTO `reminder_config` (`type`, `node_days`, `enabled`, `remind_methods`) VALUES
