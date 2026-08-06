@@ -79,6 +79,14 @@ export const userApi = {
 }
 
 /**
+ * 系统配置 API（管理员）
+ */
+export const systemConfigApi = {
+  getNotifyEmail: () => http.get('/system-config/notify-email'),
+  saveNotifyEmail: (email) => http.put('/system-config/notify-email', { email }),
+}
+
+/**
  * 操作日志 API（管理员）
  */
 export const operationLogApi = {

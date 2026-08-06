@@ -25,6 +25,9 @@
           <el-checkbox value="email">邮件通知</el-checkbox>
         </el-checkbox-group>
 
+        <h4>通知接收邮箱</h4>
+        <el-input v-model="notifyEmail" placeholder="到期提醒邮件统一发送到此邮箱" style="margin: 16px 0; max-width: 360px" />
+
         <el-button type="primary" @click="saveSettings" style="margin-top: 16px">保存设置</el-button>
       </el-tab-pane>
 
@@ -115,7 +118,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { reminderConfigApi, userApi } from '@/api'
+import { reminderConfigApi, userApi, systemConfigApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
 const userStore = useUserStore()
@@ -124,6 +127,7 @@ const userStore = useUserStore()
 const insuranceNodes = ref([30, 15, 7, 3])
 const inspectionNodes = ref([30, 15, 7, 3])
 const remindMethods = ref(['system', 'email'])
+const notifyEmail = ref('')
 
 // 用户管理
 const users = ref([])
@@ -180,6 +184,8 @@ async function loadSettings() {
       const methods = configs[0]?.remindMethods
       remindMethods.value = methods ? methods.split(',') : ['system']
     }
+    const email = await systemConfigApi.getNotifyEmail()
+    notifyEmail.value = email || ''
   } catch (e) {
     console.error('加载提醒规则失败', e)
   }
@@ -192,6 +198,7 @@ async function saveSettings() {
       inspectionNodes: inspectionNodes.value,
       remindMethods: remindMethods.value,
     })
+    await systemConfigApi.saveNotifyEmail(notifyEmail.value)
     ElMessage.success('提醒规则保存成功')
   } catch (e) {
     ElMessage.error('保存失败：' + (e.message || '未知错误'))

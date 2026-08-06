@@ -29,6 +29,9 @@ logs/
 *.tmp
 *.bak
 
+# Local env (may contain secrets like email auth code)
+.env
+
 # Archives
 *.tar.gz
 *.zip

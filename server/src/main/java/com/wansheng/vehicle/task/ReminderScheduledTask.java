@@ -3,11 +3,14 @@ package com.wansheng.vehicle.task;
 import com.wansheng.vehicle.entity.OperationLog;
 import com.wansheng.vehicle.entity.Reminder;
 import com.wansheng.vehicle.entity.ReminderConfig;
+import com.wansheng.vehicle.entity.SystemConfig;
 import com.wansheng.vehicle.entity.Vehicle;
 import com.wansheng.vehicle.repository.OperationLogMapper;
 import com.wansheng.vehicle.repository.ReminderConfigMapper;
 import com.wansheng.vehicle.repository.ReminderMapper;
+import com.wansheng.vehicle.repository.SystemConfigMapper;
 import com.wansheng.vehicle.repository.VehicleMapper;
+import com.wansheng.vehicle.service.MailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -36,6 +39,11 @@ public class ReminderScheduledTask {
     private final ReminderMapper reminderMapper;
     private final ReminderConfigMapper reminderConfigMapper;
     private final OperationLogMapper operationLogMapper;
+    private final MailService mailService;
+    private final SystemConfigMapper systemConfigMapper;
+
+    /** 统一收件邮箱（扫描开始时从 system_config 读取一次） */
+    private String notifyEmail;
 
     /** 兜底提醒节点：提前30/15/7/3天（当数据库无配置时使用） */
     private static final int[] DEFAULT_NODES = {30, 15, 7, 3};
@@ -49,6 +57,7 @@ public class ReminderScheduledTask {
 
     @Transactional
     public void scanExpiringVehicles() {
+        this.notifyEmail = resolveNotifyEmail();
         LocalDate today = LocalDate.now();
 
         List<Integer> insuranceNodes = loadEnabledNodeDays(0);
@@ -139,9 +148,9 @@ public class ReminderScheduledTask {
     }
 
     /**
-     * 模拟发送提醒。
+     * 按提醒方式发送提醒。
      * - system：提醒已落库到 reminders 表，前端"提醒中心"可见，这里仅记录日志。
-     * - email ：不真正调用邮件服务，记录一条 operation_log 并在控制台打印，便于查看"已发送"。
+     * - email ：通过 MailService 真实调用 QQ 邮箱 SMTP 发送邮件到统一收件邮箱。
      * - sms 等其他方式：已不再支持，忽略。
      */
     private void simulateSend(String methods, Vehicle v, int type, int nodeDays) {
@@ -156,10 +165,19 @@ public class ReminderScheduledTask {
             if ("system".equals(method)) {
                 log.info("[系统内提醒] 车辆 {} 的{}将在 {} 天后到期", plate, typeName, nodeDays);
             } else if ("email".equals(method)) {
-                String desc = String.format(
-                        "已模拟发送邮件提醒：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点）",
-                        plate, typeName, nodeDays, nodeDays);
-                log.info("[邮件模拟发送] {}", desc);
+                String desc;
+                if (notifyEmail != null && !notifyEmail.isBlank()) {
+                    mailService.sendReminder(notifyEmail, plate, typeName, nodeDays);
+                    desc = String.format(
+                            "已发送邮件提醒：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点），收件人 %s",
+                            plate, typeName, nodeDays, nodeDays, notifyEmail);
+                    log.info("[邮件发送] {}", desc);
+                } else {
+                    desc = String.format(
+                            "未发送邮件提醒（未配置统一收件邮箱）：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点）",
+                            plate, typeName, nodeDays, nodeDays);
+                    log.warn("[邮件发送] {}", desc);
+                }
                 operationLogMapper.insert(OperationLog.builder()
                         .userName("系统定时任务")
                         .vehicleId(v.getId())
@@ -169,6 +187,14 @@ public class ReminderScheduledTask {
             }
             // sms 等其他方式：已不再支持，忽略
         }
+    }
+
+    /** 从 system_config 读取统一收件邮箱 */
+    private String resolveNotifyEmail() {
+        SystemConfig c = systemConfigMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SystemConfig>()
+                        .eq(SystemConfig::getConfigKey, "notify_email"));
+        return c == null ? null : c.getConfigValue();
     }
 
     private String typeLabel(int type) {

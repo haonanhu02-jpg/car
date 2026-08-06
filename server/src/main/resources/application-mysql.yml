@@ -22,6 +22,33 @@ spring:
     console:
       enabled: false
 
+  # ==========================================
+  # 邮件发送（QQ 邮箱 SMTP，端口 465 SSL）
+  # 授权码通过环境变量 MAIL_PASSWORD 注入，请勿写入明文
+  # ==========================================
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${MAIL_FROM:-1277838709@qq.com}
+    password: ${MAIL_PASSWORD}
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          socketFactory:
+            class: javax.net.ssl.SSLSocketFactory
+            port: 465
+        debug: false
+
+  # 发件人（与上面的 username 一致）
+  app:
+    mail:
+      from: ${MAIL_FROM:-1277838709@qq.com}
+
 # Docker 环境必须通过环境变量设置 JWT 密钥
 jwt:
   secret: ${JWT_SECRET}

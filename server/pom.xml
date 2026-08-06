@@ -105,6 +105,12 @@
             <version>4.4.0</version>
         </dependency>
 
+        <!-- 邮件发送 (提醒邮件) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- H2 内存数据库（联调阶段替代 MySQL） -->
         <dependency>
             <groupId>com.h2database</groupId>

@@ -19,6 +19,10 @@ INSERT IGNORE INTO reminder_config (id, type, node_days, enabled, remind_methods
 (7, 1, 7,  1, 'system,sms'),
 (8, 1, 3,  1, 'system,sms');
 
+-- 统一提醒接收邮箱（保险/年检到期邮件统一发往此邮箱）
+INSERT IGNORE INTO system_config (id, config_key, config_value, description) VALUES
+(1, 'notify_email', '1277838709@qq.com', '统一提醒接收邮箱');
+
 -- 初始提醒记录（让提醒中心默认有数据可查看）
 INSERT IGNORE INTO reminders (id, vehicle_id, type, node_days, remind_date, remind_method, status, handler, handled_at) VALUES
 (1, 2, 1, 7, '2026-06-23', 'system,sms', 2, NULL, NULL),
