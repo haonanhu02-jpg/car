@@ -1,0 +1,19 @@
+# Docker 环境专用配置（通过 SPRING_PROFILES_ACTIVE=docker 激活）
+# 使用 H2 文件型数据库，数据持久化到挂载卷 /app/data
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:file:/app/data/vehicledb;MODE=MySQL;DB_CLOSE_DELAY=-1;AUTO_SERVER=TRUE
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+
+# H2 控制台（可选，便于调试）
+h2:
+  console:
+    enabled: true
+    path: /h2-console
