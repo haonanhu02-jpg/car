@@ -57,4 +57,23 @@ export const vehicleApi = {
 export const reminderApi = {
   list: (params) => http.get('/reminders', { params }),
   handle: (id) => http.put(`/reminders/${id}/handle`),
+  scan: () => http.post('/reminders/scan'),
+}
+
+/**
+ * 提醒规则配置 API
+ */
+export const reminderConfigApi = {
+  list: () => http.get('/reminder-config'),
+  save: (data) => http.post('/reminder-config', data),
+}
+
+/**
+ * 用户管理 API（管理员）
+ */
+export const userApi = {
+  list: () => http.get('/users'),
+  create: (data) => http.post('/users', data),
+  updateStatus: (id, status) => http.put(`/users/${id}/status`, { status }),
+  resetPassword: (id, password) => http.put(`/users/${id}/password`, { password }),
 }

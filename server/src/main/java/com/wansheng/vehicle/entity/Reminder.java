@@ -49,4 +49,12 @@ public class Reminder {
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+
+    // ──────────────────────────────────────
+    //  非数据库字段（用于前端展示）
+    // ──────────────────────────────────────
+
+    /** 车牌号（联查 vehicles 表得到） */
+    @TableField(exist = false)
+    private String plateNumber;
 }

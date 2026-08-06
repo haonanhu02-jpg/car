@@ -17,6 +17,9 @@
             <el-option label="已处理" :value="1" />
             <el-option label="已逾期" :value="2" />
           </el-select>
+          <el-button type="primary" :icon="Refresh" @click="handleScan" v-if="userStore.isAdmin">
+            立即扫描
+          </el-button>
         </div>
       </div>
 
@@ -35,11 +38,11 @@
           <template #default="{ row }">提前 {{ row.nodeDays }} 天</template>
         </el-table-column>
         <el-table-column prop="remindDate" label="提醒日期" width="120" />
-        <el-table-column label="提醒方式" width="100">
+        <el-table-column label="提醒方式" width="120">
           <template #default="{ row }">
-            <el-tag v-if="row.remindMethod === 'system'" size="small">系统内</el-tag>
-            <el-tag v-else-if="row.remindMethod === 'sms'" type="warning" size="small">短信</el-tag>
-            <el-tag v-else size="small">{{ row.remindMethod }}</el-tag>
+            <el-tag v-for="method in (row.remindMethod || '').split(',')" :key="method" size="small" style="margin-right: 4px">
+              {{ methodLabel(method) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="处理状态" width="100">
@@ -64,6 +67,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { reminderApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
@@ -92,5 +96,24 @@ async function handleReminder(id) {
   await reminderApi.handle(id)
   ElMessage.success('已标记为处理')
   fetchData()
+}
+
+async function handleScan() {
+  try {
+    await reminderApi.scan()
+    ElMessage.success('到期扫描完成')
+    fetchData()
+  } catch (e) {
+    ElMessage.error('扫描失败：' + (e.message || '未知错误'))
+  }
+}
+
+function methodLabel(method) {
+  const map = {
+    system: '系统内',
+    sms: '短信',
+    email: '邮件',
+  }
+  return map[method] || method
 }
 </script>
