@@ -22,7 +22,6 @@
         <h4>提醒方式</h4>
         <el-checkbox-group v-model="remindMethods" style="margin: 16px 0">
           <el-checkbox value="system">系统内消息</el-checkbox>
-          <el-checkbox value="sms">短信通知</el-checkbox>
           <el-checkbox value="email">邮件通知</el-checkbox>
         </el-checkbox-group>
 
@@ -124,7 +123,7 @@ const userStore = useUserStore()
 // 提醒规则
 const insuranceNodes = ref([30, 15, 7, 3])
 const inspectionNodes = ref([30, 15, 7, 3])
-const remindMethods = ref(['system', 'sms'])
+const remindMethods = ref(['system', 'email'])
 
 // 用户管理
 const users = ref([])
