@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS sys_user (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- 用户名唯一约束，防止重复初始化数据时产生脏数据
+ALTER TABLE sys_user ADD CONSTRAINT IF NOT EXISTS uk_sys_user_username UNIQUE (username);
 
 CREATE TABLE IF NOT EXISTS operation_log (
     id INT AUTO_INCREMENT PRIMARY KEY,
