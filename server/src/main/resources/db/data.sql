@@ -19,6 +19,12 @@ INSERT IGNORE INTO reminder_config (id, type, node_days, enabled, remind_methods
 (7, 1, 7,  1, 'system,sms'),
 (8, 1, 3,  1, 'system,sms');
 
+-- 初始提醒记录（让提醒中心默认有数据可查看）
+INSERT IGNORE INTO reminders (id, vehicle_id, type, node_days, remind_date, remind_method, status, handler, handled_at) VALUES
+(1, 2, 1, 7, '2026-06-23', 'system,sms', 2, NULL, NULL),
+(2, 3, 0, 3, '2026-06-27', 'system,sms', 2, NULL, NULL),
+(3, 3, 1, 3, '2026-07-28', 'system,sms', 0, NULL, NULL);
+
 -- 示例车辆数据
 INSERT IGNORE INTO vehicles (id, plate_number, vehicle_type, brand, purchase_date, owner,
     insurance_company, insurance_type, policy_number, insurance_expire, inspection_expire,
