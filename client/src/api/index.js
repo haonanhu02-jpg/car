@@ -30,6 +30,25 @@ export const vehicleApi = {
     http.post(`/vehicles/${id}/update-inspection`, null, {
       params: { inspectionDate, expireDate },
     }),
+  // 上传 Excel 批量导入（multipart/form-data，由后端 EasyExcel 解析）
+  importExcel: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.post('/vehicles/import', formData)
+  },
+  // 循环分页拉取全部车辆（忽略分页大小），用于导出 Excel
+  all: async (params = {}) => {
+    const collected = []
+    let page = 1
+    const size = 200
+    while (true) {
+      const r = await http.get('/vehicles', { params: { ...params, page, size } })
+      collected.push(...(r.records || []))
+      if (collected.length >= r.total || (r.records || []).length === 0) break
+      page++
+    }
+    return collected
+  },
 }
 
 /**

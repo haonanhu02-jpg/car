@@ -1,14 +1,34 @@
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: vehicle-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=wansheng123
+      - MYSQL_DATABASE=vehicle_management
+      - TZ=Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build: ./server
     container_name: vehicle-backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_PROFILES_ACTIVE=mysql
       - JWT_SECRET=${JWT_SECRET:-dGhpcy1pcy1hLWRldi1vbmx5LWp3dC1zZWNyZXQta2V5LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi0yMDI0}
-    volumes:
-      - backend-data:/app/data
+      - MYSQL_ROOT_PASSWORD=wansheng123
+    depends_on:
+      mysql:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -21,4 +41,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend-data:
+  mysql-data:

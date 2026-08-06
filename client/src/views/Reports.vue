@@ -6,7 +6,7 @@
         <div class="table-container">
           <div class="toolbar">
             <h3>📋 保险到期清单</h3>
-            <el-button type="primary" :icon="Download">导出Excel</el-button>
+            <el-button type="primary" :icon="Download" @click="exportInsurance">导出Excel</el-button>
           </div>
           <el-table :data="insuranceReport" stripe>
             <el-table-column prop="plateNumber" label="车牌号" width="120" />
@@ -30,7 +30,7 @@
         <div class="table-container">
           <div class="toolbar">
             <h3>🔍 年检到期清单</h3>
-            <el-button type="primary" :icon="Download">导出Excel</el-button>
+            <el-button type="primary" :icon="Download" @click="exportInspection">导出Excel</el-button>
           </div>
           <el-table :data="inspectionReport" stripe>
             <el-table-column prop="plateNumber" label="车牌号" width="120" />
@@ -54,13 +54,29 @@
 import { ref, onMounted } from 'vue'
 import { vehicleApi } from '@/api'
 import { Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { exportToExcel } from '@/utils/excel'
 
 const insuranceReport = ref([])
 const inspectionReport = ref([])
 
+const insuranceColumns = [
+  { label: '车牌号', key: 'plateNumber' },
+  { label: '品牌', key: 'brand' },
+  { label: '投保公司', key: 'insuranceCompany' },
+  { label: '保单号', key: 'policyNumber' },
+  { label: '保险截止日期', key: 'insuranceExpire' },
+  { label: '状态', key: 'statusLabel' },
+]
+const inspectionColumns = [
+  { label: '车牌号', key: 'plateNumber' },
+  { label: '品牌', key: 'brand' },
+  { label: '年检截止日期', key: 'inspectionExpire' },
+  { label: '状态', key: 'statusLabel' },
+]
+
 onMounted(async () => {
-  const result = await vehicleApi.list({ size: 100 })
-  const all = result.records || []
+  const all = await vehicleApi.all()
 
   insuranceReport.value = all
     .filter(v => v.insuranceExpire)
@@ -70,6 +86,22 @@ onMounted(async () => {
     .filter(v => v.inspectionExpire)
     .sort((a, b) => new Date(a.inspectionExpire) - new Date(b.inspectionExpire))
 })
+
+function dateStamp() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function exportInsurance() {
+  const rows = insuranceReport.value.map(v => ({ ...v, statusLabel: getExpireLabel(v.insuranceExpire) }))
+  exportToExcel(rows, insuranceColumns, `保险到期清单_${dateStamp()}.xlsx`)
+  ElMessage.success('保险到期清单已导出')
+}
+
+function exportInspection() {
+  const rows = inspectionReport.value.map(v => ({ ...v, statusLabel: getExpireLabel(v.inspectionExpire) }))
+  exportToExcel(rows, inspectionColumns, `年检到期清单_${dateStamp()}.xlsx`)
+  ElMessage.success('年检到期清单已导出')
+}
 
 function getExpireLabel(date) {
   if (!date) return '-'
