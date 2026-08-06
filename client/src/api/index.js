@@ -77,3 +77,11 @@ export const userApi = {
   updateStatus: (id, status) => http.put(`/users/${id}/status`, { status }),
   resetPassword: (id, password) => http.put(`/users/${id}/password`, { password }),
 }
+
+/**
+ * 操作日志 API（管理员）
+ */
+export const operationLogApi = {
+  list: (params) => http.get('/operation-logs', { params }),
+  actions: () => http.get('/operation-logs/actions'),
+}

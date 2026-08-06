@@ -3,9 +3,12 @@ package com.wansheng.vehicle.service.impl;
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wansheng.vehicle.dto.*;
 import com.wansheng.vehicle.entity.*;
 import com.wansheng.vehicle.repository.*;
+import com.wansheng.vehicle.security.SecurityUtils;
 import com.wansheng.vehicle.service.VehicleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,7 @@ import java.util.List;
  *    - 负责业务规则校验
  *    - 编排多个 Repository 调用
  *    - 管理事务边界
+ *    - 关键操作记录操作日志
  */
 @Slf4j
 @Service
@@ -38,6 +42,8 @@ public class VehicleServiceImpl implements VehicleService {
     private final InspectionHistoryMapper inspectionHistoryMapper;
     private final ReminderMapper reminderMapper;
     private final OperationLogMapper operationLogMapper;
+    private final SysUserMapper sysUserMapper;
+    private final ObjectMapper objectMapper;
 
     // ──────────────────────────────────────
     //  查询
@@ -111,6 +117,9 @@ public class VehicleServiceImpl implements VehicleService {
         vehicle.setStatus(1);
         vehicleMapper.insert(vehicle);
 
+        saveLog("CREATE_VEHICLE", vehicle.getId(),
+                "新增车辆：" + vehicle.getPlateNumber(),
+                null, vehicle);
         log.info("新增车辆: {}", vehicle.getPlateNumber());
         return vehicle;
     }
@@ -129,6 +138,10 @@ public class VehicleServiceImpl implements VehicleService {
             vehicleMapper.insert(vehicle);
             count++;
         }
+
+        saveLog("BATCH_CREATE_VEHICLE", null,
+                "批量新增车辆 " + count + " 条",
+                null, "{\"count\":" + count + "}");
         log.info("批量新增车辆 {} 条", count);
         return count;
     }
@@ -155,6 +168,10 @@ public class VehicleServiceImpl implements VehicleService {
             vehicleMapper.insert(vehicle);
             count++;
         }
+
+        saveLog("IMPORT_VEHICLE", null,
+                "Excel 导入车辆 " + count + " 条",
+                null, "{\"count\":" + count + "}");
         log.info("Excel 导入车辆 {} 条", count);
         return count;
     }
@@ -167,9 +184,15 @@ public class VehicleServiceImpl implements VehicleService {
             throw new RuntimeException("车辆不存在");
         }
 
+        Vehicle before = new Vehicle();
+        BeanUtils.copyProperties(vehicle, before);
+
         BeanUtils.copyProperties(dto, vehicle);
         vehicleMapper.updateById(vehicle);
 
+        saveLog("UPDATE_VEHICLE", vehicle.getId(),
+                "更新车辆：" + vehicle.getPlateNumber(),
+                before, vehicle);
         log.info("更新车辆: {}", vehicle.getPlateNumber());
         return vehicle;
     }
@@ -181,9 +204,16 @@ public class VehicleServiceImpl implements VehicleService {
         if (vehicle == null) {
             throw new RuntimeException("车辆不存在");
         }
+
+        Vehicle before = new Vehicle();
+        BeanUtils.copyProperties(vehicle, before);
+
         vehicle.setStatus(0);  // 软删除
         vehicleMapper.updateById(vehicle);
 
+        saveLog("DELETE_VEHICLE", vehicle.getId(),
+                "注销车辆：" + vehicle.getPlateNumber(),
+                before, vehicle);
         log.info("注销车辆: {}", vehicle.getPlateNumber());
     }
 
@@ -207,6 +237,9 @@ public class VehicleServiceImpl implements VehicleService {
 
         // 3. 同步更新车辆主表的保险信息
         Vehicle vehicle = vehicleMapper.selectById(vehicleId);
+        Vehicle before = new Vehicle();
+        BeanUtils.copyProperties(vehicle, before);
+
         vehicle.setInsuranceCompany(dto.getInsuranceCompany());
         vehicle.setInsuranceType(dto.getInsuranceType());
         vehicle.setPolicyNumber(dto.getPolicyNumber());
@@ -216,6 +249,9 @@ public class VehicleServiceImpl implements VehicleService {
         // 4. 将相关提醒标记为已处理
         // TODO: 更新提醒状态
 
+        saveLog("RENEW_INSURANCE", vehicleId,
+                "车辆 " + vehicle.getPlateNumber() + " 续保，新保单截止：" + dto.getInsuranceExpire(),
+                before, vehicle);
         log.info("车辆 {} 续保成功，新保单截止: {}", vehicle.getPlateNumber(), dto.getInsuranceExpire());
         return newInsurance;
     }
@@ -238,10 +274,58 @@ public class VehicleServiceImpl implements VehicleService {
 
         // 3. 同步更新车辆主表
         Vehicle vehicle = vehicleMapper.selectById(vehicleId);
+        Vehicle before = new Vehicle();
+        BeanUtils.copyProperties(vehicle, before);
+
         vehicle.setInspectionExpire(expireDate);
         vehicleMapper.updateById(vehicle);
 
+        saveLog("UPDATE_INSPECTION", vehicleId,
+                "车辆 " + vehicle.getPlateNumber() + " 更新年检，下次到期：" + expireDate,
+                before, vehicle);
         log.info("车辆 {} 年检更新成功，下次到期: {}", vehicle.getPlateNumber(), expireDate);
         return newInspection;
+    }
+
+    // ──────────────────────────────────────
+    //  操作日志辅助方法
+    // ──────────────────────────────────────
+
+    private void saveLog(String action, Integer vehicleId, String description, Object before, Object after) {
+        try {
+            String username = SecurityUtils.getCurrentUsername();
+            Integer userId = resolveUserId(username);
+            String ip = SecurityUtils.getCurrentIpAddress();
+
+            OperationLog operationLog = OperationLog.builder()
+                    .userId(userId)
+                    .userName(username != null ? username : "system")
+                    .vehicleId(vehicleId)
+                    .action(action)
+                    .description(description)
+                    .beforeData(before != null ? objectMapper.writeValueAsString(before) : null)
+                    .afterData(after != null ? objectMapper.writeValueAsString(after) : null)
+                    .ipAddress(ip)
+                    .build();
+            operationLogMapper.insert(operationLog);
+        } catch (JsonProcessingException e) {
+            log.warn("操作日志序列化失败: {}", e.getMessage());
+        } catch (Exception e) {
+            log.warn("操作日志记录失败: {}", e.getMessage());
+        }
+    }
+
+    private Integer resolveUserId(String username) {
+        if (username == null) {
+            return null;
+        }
+        try {
+            SysUser user = sysUserMapper.selectOne(
+                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username)
+            );
+            return user != null ? user.getId() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

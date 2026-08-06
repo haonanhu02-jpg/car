@@ -1,8 +1,12 @@
 package com.wansheng.vehicle.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wansheng.vehicle.dto.ApiResponse;
+import com.wansheng.vehicle.entity.OperationLog;
 import com.wansheng.vehicle.entity.SysUser;
+import com.wansheng.vehicle.repository.OperationLogMapper;
 import com.wansheng.vehicle.repository.SysUserMapper;
+import com.wansheng.vehicle.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
@@ -25,7 +29,9 @@ import java.util.List;
 public class UserController {
 
     private final SysUserMapper sysUserMapper;
+    private final OperationLogMapper operationLogMapper;
     private final PasswordEncoder passwordEncoder;
+    private final ObjectMapper objectMapper;
 
     @Operation(summary = "用户列表")
     @GetMapping
@@ -70,6 +76,7 @@ public class UserController {
                 .build();
 
         sysUserMapper.insert(user);
+        saveUserLog("CREATE_USER", "创建用户：" + user.getUsername() + "，角色：" + user.getRole(), null, user);
         return ApiResponse.success(null, "用户创建成功");
     }
 
@@ -97,6 +104,9 @@ public class UserController {
         update.setStatus(request.getStatus());
         update.setUpdatedAt(LocalDateTime.now());
         sysUserMapper.updateById(update);
+        saveUserLog("UPDATE_USER_STATUS",
+                "修改用户 " + user.getUsername() + " 状态为 " + (request.getStatus() == 1 ? "启用" : "禁用"),
+                user, update);
         return ApiResponse.success(null, "状态更新成功");
     }
 
@@ -116,7 +126,46 @@ public class UserController {
         update.setPassword(passwordEncoder.encode(request.getPassword()));
         update.setUpdatedAt(LocalDateTime.now());
         sysUserMapper.updateById(update);
+        saveUserLog("RESET_USER_PASSWORD",
+                "重置用户 " + user.getUsername() + " 的密码",
+                user, "{\"reset\":true}");
         return ApiResponse.success(null, "密码重置成功");
+    }
+
+    private void saveUserLog(String action, String description, Object before, Object after) {
+        try {
+            String username = SecurityUtils.getCurrentUsername();
+            SysUser operator = username != null ? sysUserMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
+                            .eq(SysUser::getUsername, username)
+            ) : null;
+
+            OperationLog operationLog = OperationLog.builder()
+                    .userId(operator != null ? operator.getId() : null)
+                    .userName(username != null ? username : "system")
+                    .action(action)
+                    .description(description)
+                    .beforeData(before != null ? maskAndSerialize(before) : null)
+                    .afterData(after != null ? maskAndSerialize(after) : null)
+                    .ipAddress(SecurityUtils.getCurrentIpAddress())
+                    .build();
+            operationLogMapper.insert(operationLog);
+        } catch (Exception e) {
+            // 日志失败不影响主业务
+        }
+    }
+
+    private String maskAndSerialize(Object obj) throws Exception {
+        if (obj instanceof String) {
+            return (String) obj;
+        }
+        if (obj instanceof SysUser) {
+            SysUser copy = new SysUser();
+            org.springframework.beans.BeanUtils.copyProperties(obj, copy);
+            copy.setPassword(null);
+            return objectMapper.writeValueAsString(copy);
+        }
+        return objectMapper.writeValueAsString(obj);
     }
 
     @Data

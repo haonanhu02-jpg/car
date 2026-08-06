@@ -48,6 +48,12 @@ const routes = [
         component: () => import('@/views/Settings.vue'),
         meta: { title: '系统设置', icon: 'Setting', adminOnly: true },
       },
+      {
+        path: 'operation-logs',
+        name: 'OperationLogs',
+        component: () => import('@/views/OperationLogs.vue'),
+        meta: { title: '操作日志', icon: 'Document', adminOnly: true },
+      },
     ],
   },
 ]
