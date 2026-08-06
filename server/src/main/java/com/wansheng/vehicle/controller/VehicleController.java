@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 车辆管理 API
@@ -60,6 +61,25 @@ public class VehicleController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Vehicle> create(@Valid @RequestBody VehicleDTO dto) {
         return ApiResponse.success(vehicleService.create(dto), "车辆注册成功");
+    }
+
+    @Operation(summary = "批量新增车辆（JSON 数组）")
+    @PostMapping("/batch")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Integer> batchCreate(@Valid @RequestBody VehicleBatchDTO batch) {
+        return ApiResponse.success(vehicleService.batchCreate(batch.getItems()), "批量导入成功");
+    }
+
+    @Operation(summary = "Excel 批量导入车辆")
+    @PostMapping("/import")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Integer> importExcel(@RequestParam("file") MultipartFile file) {
+        try {
+            int count = vehicleService.importFromExcel(file);
+            return ApiResponse.success(count, "成功导入 " + count + " 条");
+        } catch (Exception e) {
+            return ApiResponse.error(500, "导入失败：" + e.getMessage());
+        }
     }
 
     @Operation(summary = "更新车辆信息")

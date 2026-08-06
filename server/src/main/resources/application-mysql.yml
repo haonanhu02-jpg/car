@@ -1,0 +1,27 @@
+# ==========================================
+# 万盛股份 · 车辆管理系统 — MySQL 生产环境配置
+# 通过 SPRING_PROFILES_ACTIVE=mysql 激活
+# ==========================================
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://mysql:3306/vehicle_management?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8
+    username: root
+    password: ${MYSQL_ROOT_PASSWORD:-wansheng123}
+
+  # 启动时初始化数据（schema/data 已在 application.yml 中配置，这里保持开启）
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+
+  # 关闭 H2 控制台
+  h2:
+    console:
+      enabled: false
+
+# Docker 环境必须通过环境变量设置 JWT 密钥
+jwt:
+  secret: ${JWT_SECRET}

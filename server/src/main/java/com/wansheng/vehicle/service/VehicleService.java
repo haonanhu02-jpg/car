@@ -7,6 +7,7 @@ import com.wansheng.vehicle.entity.InspectionHistory;
 import com.wansheng.vehicle.entity.Vehicle;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -29,6 +30,16 @@ public interface VehicleService {
      * 新增车辆
      */
     Vehicle create(VehicleDTO dto);
+
+    /**
+     * 批量新增车辆（JSON 数组）
+     */
+    int batchCreate(List<VehicleDTO> dtos);
+
+    /**
+     * Excel 批量导入车辆
+     */
+    int importFromExcel(MultipartFile file) throws IOException;
 
     /**
      * 更新车辆

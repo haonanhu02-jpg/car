@@ -1,5 +1,6 @@
 package com.wansheng.vehicle.service.impl;
 
+import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wansheng.vehicle.dto.*;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -111,6 +113,50 @@ public class VehicleServiceImpl implements VehicleService {
 
         log.info("新增车辆: {}", vehicle.getPlateNumber());
         return vehicle;
+    }
+
+    @Override
+    @Transactional
+    public int batchCreate(List<VehicleDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (VehicleDTO dto : dtos) {
+            Vehicle vehicle = new Vehicle();
+            BeanUtils.copyProperties(dto, vehicle);
+            vehicle.setStatus(1);
+            vehicleMapper.insert(vehicle);
+            count++;
+        }
+        log.info("批量新增车辆 {} 条", count);
+        return count;
+    }
+
+    @Override
+    @Transactional
+    public int importFromExcel(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("文件不能为空");
+        }
+        List<VehicleImportDTO> rows = EasyExcel.read(file.getInputStream())
+                .head(VehicleImportDTO.class)
+                .sheet()
+                .doReadSync();
+
+        int count = 0;
+        for (VehicleImportDTO d : rows) {
+            if (d == null || d.getPlateNumber() == null || d.getPlateNumber().isBlank()) {
+                continue; // 跳过空行
+            }
+            Vehicle vehicle = new Vehicle();
+            BeanUtils.copyProperties(d, vehicle);
+            vehicle.setStatus(1);
+            vehicleMapper.insert(vehicle);
+            count++;
+        }
+        log.info("Excel 导入车辆 {} 条", count);
+        return count;
     }
 
     @Override

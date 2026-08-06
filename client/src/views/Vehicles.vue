@@ -7,8 +7,8 @@
           <el-button type="primary" :icon="Plus" @click="showCreateDialog" v-if="userStore.isAdmin">
             新增车辆
           </el-button>
-          <el-button :icon="Upload" v-if="userStore.isAdmin">导入Excel</el-button>
-          <el-button :icon="Download">导出Excel</el-button>
+          <el-button :icon="Upload" v-if="userStore.isAdmin" @click="importVisible = true">导入Excel</el-button>
+          <el-button :icon="Download" :loading="exporting" @click="handleExport">导出Excel</el-button>
         </div>
         <div class="toolbar-right">
           <el-input v-model="keyword" placeholder="输入车牌号搜索..." :prefix-icon="Search"
@@ -157,16 +157,51 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog v-model="importVisible" title="批量导入车辆（Excel）" width="580px" @closed="resetImport">
+      <el-alert type="info" :closable="false" show-icon style="margin-bottom: 14px">
+        <template #title>
+          模板列（按顺序）：车牌号、车辆类型(0=小车/1=大巴)、品牌、上牌日期、所属、投保公司、险种、保单号、保险到期、年检到期、ETC银行、油卡号、备注
+        </template>
+      </el-alert>
+      <el-upload
+        ref="uploadRef"
+        drag
+        accept=".xlsx,.xls"
+        :auto-upload="false"
+        :limit="1"
+        :on-change="handleFileChange"
+        :on-remove="handleFileRemove"
+        :on-exceed="() => ElMessage.warning('每次只能上传一个文件')"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">将 Excel 文件拖到此处，或 <em>点击上传</em></div>
+        <template #tip>
+          <div class="el-upload__tip">仅支持 .xlsx / .xls，单次一个文件</div>
+        </template>
+      </el-upload>
+      <el-button link type="primary" @click="downloadTemplateFile" style="margin-top: 8px">
+        下载导入模板
+      </el-button>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="doImport">
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Upload, Download, Search } from '@element-plus/icons-vue'
+import { Plus, Upload, Download, Search, UploadFilled } from '@element-plus/icons-vue'
 import { vehicleApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { exportToExcel, downloadTemplate } from '@/utils/excel'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -184,6 +219,13 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref(null)
 const formRef = ref(null)
+
+// 批量导入 / 导出
+const importVisible = ref(false)
+const importFile = ref(null)
+const importing = ref(false)
+const exporting = ref(false)
+const uploadRef = ref(null)
 
 const form = reactive({
   plateNumber: '',
@@ -209,6 +251,40 @@ const rules = {
   vehicleType: [{ required: true, message: '请选择车辆类型', trigger: 'change' }],
   brand: [{ required: true, message: '请输入品牌', trigger: 'blur' }],
 }
+
+// 导入模板列（与后端 VehicleImportDTO 表头一一对应）
+const importColumns = [
+  { label: '车牌号', key: 'plateNumber' },
+  { label: '车辆类型', key: 'vehicleType' },
+  { label: '品牌', key: 'brand' },
+  { label: '上牌日期', key: 'purchaseDate' },
+  { label: '所属', key: 'owner' },
+  { label: '投保公司', key: 'insuranceCompany' },
+  { label: '险种', key: 'insuranceType' },
+  { label: '保单号', key: 'policyNumber' },
+  { label: '保险到期', key: 'insuranceExpire' },
+  { label: '年检到期', key: 'inspectionExpire' },
+  { label: 'ETC银行', key: 'etcBank' },
+  { label: '油卡号', key: 'oilCardNumber' },
+  { label: '备注', key: 'remark' },
+]
+
+// 导出列（车辆类型转为中文）
+const exportColumns = [
+  { label: '车牌号', key: 'plateNumber' },
+  { label: '车辆类型', key: 'vehicleTypeText' },
+  { label: '品牌', key: 'brand' },
+  { label: '上牌日期', key: 'purchaseDate' },
+  { label: '保险截止日', key: 'insuranceExpire' },
+  { label: '年检截止日', key: 'inspectionExpire' },
+  { label: '产权所属', key: 'owner' },
+  { label: '投保公司', key: 'insuranceCompany' },
+  { label: '险种', key: 'insuranceType' },
+  { label: '保单号', key: 'policyNumber' },
+  { label: 'ETC银行', key: 'etcBank' },
+  { label: '油卡号码', key: 'oilCardNumber' },
+  { label: '备注', key: 'remark' },
+]
 
 onMounted(() => fetchData())
 
@@ -284,6 +360,56 @@ async function handleSave() {
     fetchData()
   } finally {
     saving.value = false
+  }
+}
+
+// ──────────────────────────────────────
+//  批量导入 / 导出 Excel
+// ──────────────────────────────────────
+function handleFileChange(uploadFile) {
+  importFile.value = uploadFile.raw
+}
+function handleFileRemove() {
+  importFile.value = null
+}
+function resetImport() {
+  importFile.value = null
+  uploadRef.value?.clearFiles()
+}
+function downloadTemplateFile() {
+  downloadTemplate(importColumns, '车辆导入模板.xlsx')
+}
+async function doImport() {
+  if (!importFile.value) return
+  importing.value = true
+  try {
+    const count = await vehicleApi.importExcel(importFile.value)
+    ElMessage.success(`成功导入 ${count} 条车辆`)
+    importVisible.value = false
+    fetchData()
+  } catch (e) {
+    // 错误已由 http 拦截器统一提示
+  } finally {
+    importing.value = false
+  }
+}
+async function handleExport() {
+  exporting.value = true
+  try {
+    const rows = await vehicleApi.all({
+      keyword: keyword.value || undefined,
+      vehicleType: vehicleType.value,
+    })
+    const data = rows.map(v => ({
+      ...v,
+      vehicleTypeText: v.vehicleType === 0 ? '小车' : v.vehicleType === 1 ? '大巴' : v.vehicleType,
+    }))
+    exportToExcel(data, exportColumns, `车辆台账_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    ElMessage.success(`已导出 ${data.length} 条车辆`)
+  } catch (e) {
+    // 错误已由 http 拦截器统一提示
+  } finally {
+    exporting.value = false
   }
 }
 
