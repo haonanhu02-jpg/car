@@ -57,13 +57,23 @@ const router = createRouter({
   routes,
 })
 
-// 路由守卫 — 未登录跳转登录页
+// 路由守卫 — 未登录跳转登录页，管理员路由权限校验
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
+  const role = localStorage.getItem('role')
+
   if (to.meta.noAuth) {
-    next()
+    // 已登录用户访问登录页时跳转到首页
+    if (token && to.path === '/login') {
+      next('/dashboard')
+    } else {
+      next()
+    }
   } else if (!token) {
     next('/login')
+  } else if (to.meta.adminOnly && role !== 'ADMIN') {
+    // 非管理员访问管理员路由，重定向到首页
+    next('/dashboard')
   } else {
     next()
   }

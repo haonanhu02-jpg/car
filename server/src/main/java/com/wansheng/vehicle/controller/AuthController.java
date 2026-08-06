@@ -43,15 +43,6 @@ public class AuthController {
         ), "登录成功");
     }
 
-    /**
-     * 🔧 联调辅助：生成密码哈希
-     */
-    @Operation(summary = "生成BCrypt密码（联调用）")
-    @GetMapping("/gen-pass")
-    public ApiResponse<String> genPass(@RequestParam String raw) {
-        return ApiResponse.success(passwordEncoder.encode(raw));
-    }
-
     @Data
     static class LoginRequest {
         private String username;
