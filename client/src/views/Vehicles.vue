@@ -162,7 +162,7 @@
     <el-dialog v-model="importVisible" title="批量导入车辆（Excel）" width="580px" @closed="resetImport">
       <el-alert type="info" :closable="false" show-icon style="margin-bottom: 14px">
         <template #title>
-          模板列（按顺序）：车牌号、车辆类型(0=小车/1=大巴)、品牌、上牌日期、所属、投保公司、险种、保单号、保险到期、年检到期、ETC银行、油卡号、备注
+          支持 .xls / .xlsx。表头行可位于前 10 行任意位置（允许第一行为标题）；未提供车辆类型时默认按“小车”导入。
         </template>
       </el-alert>
       <el-upload
@@ -252,21 +252,22 @@ const rules = {
   brand: [{ required: true, message: '请输入品牌', trigger: 'blur' }],
 }
 
-// 导入模板列（与后端 VehicleImportDTO 表头一一对应）
+// 导入模板列（与后端 Excel 解析器映射的表头一致）
 const importColumns = [
+  { label: '序号', key: 'no' },
   { label: '车牌号', key: 'plateNumber' },
-  { label: '车辆类型', key: 'vehicleType' },
-  { label: '品牌', key: 'brand' },
-  { label: '上牌日期', key: 'purchaseDate' },
-  { label: '所属', key: 'owner' },
+  { label: '车辆品牌', key: 'brand' },
+  { label: '年检日期', key: 'inspectionExpire' },
+  { label: '上牌时间', key: 'purchaseDate' },
+  { label: '所属公司', key: 'company' },
+  { label: '产权所属', key: 'owner' },
   { label: '投保公司', key: 'insuranceCompany' },
   { label: '险种', key: 'insuranceType' },
   { label: '保单号', key: 'policyNumber' },
-  { label: '保险到期', key: 'insuranceExpire' },
-  { label: '年检到期', key: 'inspectionExpire' },
-  { label: 'ETC银行', key: 'etcBank' },
-  { label: '油卡号', key: 'oilCardNumber' },
-  { label: '备注', key: 'remark' },
+  { label: '保险截止', key: 'insuranceExpire' },
+  { label: 'ETC办理', key: 'etcBank' },
+  { label: '油卡号码', key: 'oilCardNumber' },
+  { label: '备忘录', key: 'remark' },
 ]
 
 // 导出列（车辆类型转为中文）

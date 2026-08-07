@@ -1,6 +1,5 @@
 package com.wansheng.vehicle.service.impl;
 
-import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -155,34 +154,28 @@ public class VehicleServiceImpl implements VehicleService {
         String originalName = file.getOriginalFilename();
         log.info("开始导入 Excel，文件名：{}，大小：{} bytes", originalName, file.getSize());
 
-        List<VehicleImportDTO> rows = EasyExcel.read(file.getInputStream())
-                .head(VehicleImportDTO.class)
-                .sheet()
-                .doReadSync();
+        List<Vehicle> vehicles = readVehiclesFromExcel(file);
 
-        if (rows == null) {
-            rows = new ArrayList<>();
-        }
-        log.info("EasyExcel 共读取到 {} 行数据", rows.size());
-
-        if (rows.isEmpty()) {
+        if (vehicles.isEmpty()) {
             throw new IllegalArgumentException(
-                    "未从 Excel 中读取到任何数据。请检查：1) 第一行是否为表头；2) 表头文字是否与模板一致（车牌号、车辆类型、品牌……）；3) 数据是否从第二行开始；4) 如为 .xls 格式，建议另存为 .xlsx 后重试。");
+                    "未从 Excel 中读取到任何有效数据。请检查：1) 是否存在包含“车牌号”的表头行；2) 表头字段名称是否正确；3) 数据行是否在表头下方；4) 文件是否为真实的 .xls/.xlsx 格式（而非 HTML 伪装的 .xls）。");
         }
 
         int count = 0;
         int skip = 0;
-        for (int i = 0; i < rows.size(); i++) {
-            VehicleImportDTO d = rows.get(i);
-            if (d == null || d.getPlateNumber() == null || d.getPlateNumber().isBlank()) {
+        for (Vehicle vehicle : vehicles) {
+            if (vehicle.getPlateNumber() == null || vehicle.getPlateNumber().isBlank()) {
                 skip++;
-                log.warn("第 {} 行数据为空或车牌号缺失，已跳过", i + 2);
-                continue; // 跳过空行
+                continue;
             }
-            Vehicle vehicle = new Vehicle();
-            BeanUtils.copyProperties(d, vehicle);
             if (vehicle.getVehicleType() == null) {
                 vehicle.setVehicleType(0); // Excel 未提供车辆类型时默认小车
+            }
+            if (vehicle.getCompany() == null || vehicle.getCompany().isBlank()) {
+                vehicle.setCompany("万盛股份");
+            }
+            if (vehicle.getOwner() == null || vehicle.getOwner().isBlank()) {
+                vehicle.setOwner("公司");
             }
             vehicle.setStatus(1);
             vehicleMapper.insert(vehicle);
@@ -190,10 +183,176 @@ public class VehicleServiceImpl implements VehicleService {
         }
 
         saveLog("IMPORT_VEHICLE", null,
-                "Excel 导入车辆 " + count + " 条（读取 " + rows.size() + " 行，跳过 " + skip + " 行）",
-                null, "{\"count\":" + count + ",\"read\":" + rows.size() + ",\"skip\":" + skip + "}");
-        log.info("Excel 导入完成，读取 {} 行，跳过 {} 行，成功导入 {} 条", rows.size(), skip, count);
+                "Excel 导入车辆 " + count + " 条（读取 " + vehicles.size() + " 行，跳过 " + skip + " 行）",
+                null, "{\"count\":" + count + ",\"read\":" + vehicles.size() + ",\"skip\":" + skip + "}");
+        log.info("Excel 导入完成，读取 {} 行，跳过 {} 行，成功导入 {} 条", vehicles.size(), skip, count);
         return count;
+    }
+
+    /**
+     * 通用 Excel 解析：同时支持 .xls / .xlsx，自动定位“车牌号”所在表头行，按列名映射字段。
+     */
+    private List<Vehicle> readVehiclesFromExcel(MultipartFile file) throws IOException {
+        List<Vehicle> result = new ArrayList<>();
+
+        try (org.apache.poi.ss.usermodel.Workbook workbook =
+                     org.apache.poi.ss.usermodel.WorkbookFactory.create(file.getInputStream())) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.getSheetAt(0);
+            if (sheet == null) {
+                throw new IllegalArgumentException("Excel 中没有 sheet");
+            }
+
+            // 1. 定位表头行：在前 10 行中查找包含“车牌号”的单元格
+            int headerRowIndex = -1;
+            java.util.Map<Integer, String> headerMap = new java.util.HashMap<>();
+            int lastRow = Math.min(10, sheet.getLastRowNum() + 1);
+            for (int r = 0; r < lastRow; r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+                java.util.Map<Integer, String> temp = new java.util.HashMap<>();
+                boolean hasPlate = false;
+                for (int c = 0; c < row.getLastCellNum(); c++) {
+                    String val = getCellStringValue(row.getCell(c));
+                    if (val != null && val.contains("车牌号")) {
+                        hasPlate = true;
+                    }
+                    temp.put(c, val);
+                }
+                if (hasPlate) {
+                    headerRowIndex = r;
+                    headerMap = temp;
+                    break;
+                }
+            }
+
+            if (headerRowIndex == -1) {
+                throw new IllegalArgumentException("未在 Excel 中找到包含“车牌号”的表头行，请检查表头内容。");
+            }
+
+            // 2. 建立列索引 -> 字段的映射
+            java.util.Map<String, Integer> columnIndex = new java.util.HashMap<>();
+            for (java.util.Map.Entry<Integer, String> entry : headerMap.entrySet()) {
+                String header = normalizeHeader(entry.getValue());
+                if (header != null) {
+                    columnIndex.put(header, entry.getKey());
+                }
+            }
+
+            // 3. 从表头下一行开始读取数据
+            for (int r = headerRowIndex + 1; r <= sheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                if (row == null) continue;
+
+                String plate = getStringCell(row, columnIndex.get("车牌号"));
+                if (plate == null || plate.isBlank()) {
+                    continue; // 跳过空行
+                }
+
+                Vehicle v = new Vehicle();
+                v.setPlateNumber(plate);
+                v.setVehicleType(parseVehicleType(getStringCell(row, columnIndex.get("车辆类型"))));
+                v.setBrand(getStringCell(row, columnIndex.get("品牌")));
+                v.setPurchaseDate(getDateCell(row, columnIndex.get("上牌日期")));
+                v.setCompany(getStringCell(row, columnIndex.get("所属公司")));
+                v.setOwner(getStringCell(row, columnIndex.get("所属")));
+                v.setInsuranceCompany(getStringCell(row, columnIndex.get("投保公司")));
+                v.setInsuranceType(getStringCell(row, columnIndex.get("险种")));
+                v.setPolicyNumber(getStringCell(row, columnIndex.get("保单号")));
+                v.setInsuranceExpire(getDateCell(row, columnIndex.get("保险到期")));
+                v.setInspectionExpire(getDateCell(row, columnIndex.get("年检到期")));
+                v.setEtcBank(getStringCell(row, columnIndex.get("ETC银行")));
+                v.setOilCardNumber(getStringCell(row, columnIndex.get("油卡号")));
+                v.setRemark(getStringCell(row, columnIndex.get("备注")));
+
+                result.add(v);
+            }
+        }
+        return result;
+    }
+
+    private String normalizeHeader(String header) {
+        if (header == null) return null;
+        String h = header.trim().replaceAll("\\s+", "").replaceAll("[()（）0-9=]", "");
+        if (h.contains("车牌号")) return "车牌号";
+        if (h.contains("车辆类型") || h.equals("类型")) return "车辆类型";
+        if (h.contains("车辆品牌") || h.equals("品牌")) return "品牌";
+        if (h.contains("上牌时间") || h.contains("上牌日期") || h.contains("购买日期")) return "上牌日期";
+        if (h.contains("所属公司") || h.equals("公司")) return "所属公司";
+        if (h.contains("产权所属") || h.equals("所属") || h.equals("归属")) return "所属";
+        if (h.contains("投保公司") || h.contains("保险公司")) return "投保公司";
+        if (h.contains("险种") || h.contains("保险类型")) return "险种";
+        if (h.contains("保单号")) return "保单号";
+        if (h.contains("保险截止") || h.contains("保险到期") || h.contains("保险结束")) return "保险到期";
+        if (h.contains("年检日期") || h.contains("年检截止") || h.contains("年检到期")) return "年检到期";
+        if (h.contains("ETC办理") || h.contains("ETC银行") || h.equals("ETC")) return "ETC银行";
+        if (h.contains("油卡号码") || h.contains("油卡号") || h.equals("油卡")) return "油卡号";
+        if (h.contains("备忘录") || h.contains("备注")) return "备注";
+        return null;
+    }
+
+    private Integer parseVehicleType(String value) {
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim();
+        if (v.equals("0") || v.equals("小车") || v.contains("小")) return 0;
+        if (v.equals("1") || v.equals("大巴") || v.contains("大")) return 1;
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String getStringCell(org.apache.poi.ss.usermodel.Row row, Integer col) {
+        if (col == null) return null;
+        return getCellStringValue(row.getCell(col));
+    }
+
+    private LocalDate getDateCell(org.apache.poi.ss.usermodel.Row row, Integer col) {
+        if (col == null) return null;
+        org.apache.poi.ss.usermodel.Cell cell = row.getCell(col);
+        if (cell == null) return null;
+        try {
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC
+                    && org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+                return cell.getLocalDateTimeCellValue().toLocalDate();
+            }
+            String s = getCellStringValue(cell);
+            if (s == null || s.isBlank()) return null;
+            // 支持 yyyy-MM-dd 或 yyyy/MM/dd
+            s = s.trim().replace("/", "-");
+            return LocalDate.parse(s);
+        } catch (Exception e) {
+            log.warn("日期解析失败，值：{}，原因：{}", cell, e.getMessage());
+            return null;
+        }
+    }
+
+    private String getCellStringValue(org.apache.poi.ss.usermodel.Cell cell) {
+        if (cell == null) return null;
+        switch (cell.getCellType()) {
+            case STRING:
+                return cell.getStringCellValue().trim();
+            case NUMERIC:
+                if (org.apache.poi.ss.usermodel.DateUtil.isCellDateFormatted(cell)) {
+                    return cell.getLocalDateTimeCellValue().toLocalDate().toString();
+                }
+                double d = cell.getNumericCellValue();
+                if (d == Math.floor(d)) {
+                    return String.valueOf((long) d);
+                }
+                return String.valueOf(d);
+            case BOOLEAN:
+                return String.valueOf(cell.getBooleanCellValue());
+            case FORMULA:
+                try {
+                    return cell.getStringCellValue().trim();
+                } catch (Exception e) {
+                    return String.valueOf(cell.getNumericCellValue());
+                }
+            default:
+                return null;
+        }
     }
 
     @Override
