@@ -152,27 +152,47 @@ public class VehicleServiceImpl implements VehicleService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("文件不能为空");
         }
+        String originalName = file.getOriginalFilename();
+        log.info("开始导入 Excel，文件名：{}，大小：{} bytes", originalName, file.getSize());
+
         List<VehicleImportDTO> rows = EasyExcel.read(file.getInputStream())
                 .head(VehicleImportDTO.class)
                 .sheet()
                 .doReadSync();
 
+        if (rows == null) {
+            rows = new ArrayList<>();
+        }
+        log.info("EasyExcel 共读取到 {} 行数据", rows.size());
+
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "未从 Excel 中读取到任何数据。请检查：1) 第一行是否为表头；2) 表头文字是否与模板一致（车牌号、车辆类型、品牌……）；3) 数据是否从第二行开始；4) 如为 .xls 格式，建议另存为 .xlsx 后重试。");
+        }
+
         int count = 0;
-        for (VehicleImportDTO d : rows) {
+        int skip = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            VehicleImportDTO d = rows.get(i);
             if (d == null || d.getPlateNumber() == null || d.getPlateNumber().isBlank()) {
+                skip++;
+                log.warn("第 {} 行数据为空或车牌号缺失，已跳过", i + 2);
                 continue; // 跳过空行
             }
             Vehicle vehicle = new Vehicle();
             BeanUtils.copyProperties(d, vehicle);
+            if (vehicle.getVehicleType() == null) {
+                vehicle.setVehicleType(0); // Excel 未提供车辆类型时默认小车
+            }
             vehicle.setStatus(1);
             vehicleMapper.insert(vehicle);
             count++;
         }
 
         saveLog("IMPORT_VEHICLE", null,
-                "Excel 导入车辆 " + count + " 条",
-                null, "{\"count\":" + count + "}");
-        log.info("Excel 导入车辆 {} 条", count);
+                "Excel 导入车辆 " + count + " 条（读取 " + rows.size() + " 行，跳过 " + skip + " 行）",
+                null, "{\"count\":" + count + ",\"read\":" + rows.size() + ",\"skip\":" + skip + "}");
+        log.info("Excel 导入完成，读取 {} 行，跳过 {} 行，成功导入 {} 条", rows.size(), skip, count);
         return count;
     }
 
