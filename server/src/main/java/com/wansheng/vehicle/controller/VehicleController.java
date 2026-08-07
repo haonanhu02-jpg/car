@@ -70,13 +70,14 @@ public class VehicleController {
         return ApiResponse.success(vehicleService.batchCreate(batch.getItems()), "批量导入成功");
     }
 
-    @Operation(summary = "Excel 批量导入车辆")
+    @Operation(summary = "Excel 批量导入车辆（按车牌号去重，存在则更新）")
     @PostMapping("/import")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<Integer> importExcel(@RequestParam("file") MultipartFile file) {
+    public ApiResponse<ImportResult> importExcel(@RequestParam("file") MultipartFile file) {
         try {
-            int count = vehicleService.importFromExcel(file);
-            return ApiResponse.success(count, "成功导入 " + count + " 条");
+            ImportResult result = vehicleService.importFromExcel(file);
+            return ApiResponse.success(result,
+                    "导入成功：新增 " + result.getInserted() + " 条，更新 " + result.getUpdated() + " 条");
         } catch (Exception e) {
             return ApiResponse.error(500, "导入失败：" + e.getMessage());
         }

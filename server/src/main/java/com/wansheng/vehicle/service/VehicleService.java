@@ -37,9 +37,9 @@ public interface VehicleService {
     int batchCreate(List<VehicleDTO> dtos);
 
     /**
-     * Excel 批量导入车辆
+     * Excel 批量导入车辆（按车牌号去重，存在则更新，不存在则新增）
      */
-    int importFromExcel(MultipartFile file) throws IOException;
+    ImportResult importFromExcel(MultipartFile file) throws IOException;
 
     /**
      * 更新车辆

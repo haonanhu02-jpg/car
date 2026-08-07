@@ -30,7 +30,7 @@ export const vehicleApi = {
     http.post(`/vehicles/${id}/update-inspection`, null, {
       params: { inspectionDate, expireDate },
     }),
-  // 上传 Excel 批量导入（multipart/form-data，由后端 EasyExcel 解析）
+  // 上传 Excel 批量导入（multipart/form-data，后端按车牌号去重：存在更新，不存在新增）
   importExcel: (file) => {
     const formData = new FormData()
     formData.append('file', file)

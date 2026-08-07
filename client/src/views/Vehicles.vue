@@ -384,8 +384,9 @@ async function doImport() {
   if (!importFile.value) return
   importing.value = true
   try {
-    const count = await vehicleApi.importExcel(importFile.value)
-    ElMessage.success(`成功导入 ${count} 条车辆`)
+    const result = await vehicleApi.importExcel(importFile.value)
+    const msg = `导入成功：新增 ${result.inserted || 0} 条，更新 ${result.updated || 0} 条`
+    ElMessage.success(msg)
     importVisible.value = false
     fetchData()
   } catch (e) {

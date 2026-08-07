@@ -147,7 +147,7 @@ public class VehicleServiceImpl implements VehicleService {
 
     @Override
     @Transactional
-    public int importFromExcel(MultipartFile file) throws IOException {
+    public ImportResult importFromExcel(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("文件不能为空");
         }
@@ -161,13 +161,16 @@ public class VehicleServiceImpl implements VehicleService {
                     "未从 Excel 中读取到任何有效数据。请检查：1) 是否存在包含“车牌号”的表头行；2) 表头字段名称是否正确；3) 数据行是否在表头下方；4) 文件是否为真实的 .xls/.xlsx 格式（而非 HTML 伪装的 .xls）。");
         }
 
-        int count = 0;
-        int skip = 0;
+        int inserted = 0;
+        int updated = 0;
+        int skipped = 0;
         for (Vehicle vehicle : vehicles) {
             if (vehicle.getPlateNumber() == null || vehicle.getPlateNumber().isBlank()) {
-                skip++;
+                skipped++;
                 continue;
             }
+
+            // 默认值填充
             if (vehicle.getVehicleType() == null) {
                 vehicle.setVehicleType(0); // Excel 未提供车辆类型时默认小车
             }
@@ -177,16 +180,42 @@ public class VehicleServiceImpl implements VehicleService {
             if (vehicle.getOwner() == null || vehicle.getOwner().isBlank()) {
                 vehicle.setOwner("公司");
             }
-            vehicle.setStatus(1);
-            vehicleMapper.insert(vehicle);
-            count++;
+
+            // 按车牌号查询所有现存记录（逻辑删除的会自动被过滤）
+            List<Vehicle> existingList = vehicleMapper.selectList(
+                    new LambdaQueryWrapper<Vehicle>()
+                            .eq(Vehicle::getPlateNumber, vehicle.getPlateNumber())
+                            .orderByAsc(Vehicle::getId)
+            );
+
+            if (!existingList.isEmpty()) {
+                // 保留最新一条并覆盖为本次导入数据；若存在历史重复数据，将较早的记录标记为删除
+                Vehicle latest = existingList.get(existingList.size() - 1);
+                vehicle.setId(latest.getId());
+                vehicle.setStatus(1);
+                vehicleMapper.updateById(vehicle);
+                updated++;
+                log.info("更新车辆：{}（id={}）", vehicle.getPlateNumber(), latest.getId());
+
+                for (int i = 0; i < existingList.size() - 1; i++) {
+                    vehicleMapper.deleteById(existingList.get(i).getId());
+                    log.info("清理历史重复车辆：{}（id={}）", vehicle.getPlateNumber(), existingList.get(i).getId());
+                }
+            } else {
+                vehicle.setStatus(1);
+                vehicleMapper.insert(vehicle);
+                inserted++;
+                log.info("新增车辆：{}", vehicle.getPlateNumber());
+            }
         }
 
+        int total = inserted + updated;
         saveLog("IMPORT_VEHICLE", null,
-                "Excel 导入车辆 " + count + " 条（读取 " + vehicles.size() + " 行，跳过 " + skip + " 行）",
-                null, "{\"count\":" + count + ",\"read\":" + vehicles.size() + ",\"skip\":" + skip + "}");
-        log.info("Excel 导入完成，读取 {} 行，跳过 {} 行，成功导入 {} 条", vehicles.size(), skip, count);
-        return count;
+                "Excel 导入车辆：新增 " + inserted + " 条，更新 " + updated + " 条，跳过 " + skipped + " 行",
+                null, "{\"total\":" + total + ",\"inserted\":" + inserted + ",\"updated\":" + updated + ",\"skipped\":" + skipped + "}");
+        log.info("Excel 导入完成，读取 {} 行，新增 {} 条，更新 {} 条，跳过 {} 行",
+                vehicles.size(), inserted, updated, skipped);
+        return new ImportResult(total, inserted, updated, skipped);
     }
 
     /**
