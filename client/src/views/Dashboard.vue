@@ -20,6 +20,24 @@
       </div>
     </div>
 
+    <!-- 管理员待办：注册申请审批 -->
+    <div v-if="userStore.isAdmin" class="todo-section">
+      <div class="todo-card" @click="goToRegistrationApproval">
+        <div class="todo-icon">📝</div>
+        <div class="todo-content">
+          <div class="todo-label">注册申请待审批</div>
+          <div class="todo-number" :class="{ 'has-pending': pendingRegCount > 0 }">
+            {{ pendingRegCount }}
+          </div>
+        </div>
+        <div class="todo-action">
+          <el-button type="primary" size="small" :disabled="pendingRegCount === 0">
+            去处理
+          </el-button>
+        </div>
+      </div>
+    </div>
+
     <!-- 待办提醒列表 -->
     <div class="table-container">
       <div class="section-header">
@@ -56,25 +74,41 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { dashboardApi } from '@/api'
+import { useRouter } from 'vue-router'
+import { dashboardApi, registrationApi } from '@/api'
+import { useUserStore } from '@/stores/user'
 
+const router = useRouter()
+const userStore = useUserStore()
 const loading = ref(false)
 const stats = ref({ totalVehicles: 0, todayExpiring: 0, expiringSoon: 0, overdue: 0 })
 const expiringVehicles = ref([])
+const pendingRegCount = ref(0)
 
 onMounted(async () => {
   loading.value = true
   try {
-    const [s, v] = await Promise.all([
+    const requests = [
       dashboardApi.getStatistics(),
       dashboardApi.getExpiringVehicles(),
-    ])
+    ]
+    if (userStore.isAdmin) {
+      requests.push(registrationApi.list(0).then(list => list.length))
+    }
+    const [s, v, regCount] = await Promise.all(requests)
     stats.value = s
     expiringVehicles.value = v
+    if (userStore.isAdmin) {
+      pendingRegCount.value = regCount
+    }
   } finally {
     loading.value = false
   }
 })
+
+function goToRegistrationApproval() {
+  router.push({ path: '/settings', query: { tab: 'registration' } })
+}
 
 function isExpiring(date) {
   if (!date) return false
@@ -122,5 +156,57 @@ function getExpireClass(row) {
   margin: 0;
   font-size: 16px;
   color: #303133;
+}
+
+.todo-section {
+  margin: 16px 0 24px;
+}
+
+.todo-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.1s;
+  border-left: 4px solid #409eff;
+}
+
+.todo-card:hover {
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.todo-icon {
+  font-size: 28px;
+}
+
+.todo-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todo-label {
+  font-size: 14px;
+  color: #606266;
+}
+
+.todo-number {
+  font-size: 24px;
+  font-weight: 600;
+  color: #909399;
+  line-height: 1;
+}
+
+.todo-number.has-pending {
+  color: #ff4d4f;
+}
+
+.todo-action {
+  margin-left: 8px;
 }
 </style>

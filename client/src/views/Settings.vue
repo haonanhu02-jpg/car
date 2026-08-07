@@ -1,6 +1,6 @@
 <template>
   <div class="settings-page" v-if="userStore.isAdmin">
-    <el-tabs type="border-card">
+    <el-tabs type="border-card" v-model="activeTab">
       <!-- 提醒规则设置 -->
       <el-tab-pane label="提醒规则设置">
         <h4>保险提醒节点</h4>
@@ -152,12 +152,17 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { reminderConfigApi, userApi, systemConfigApi, registrationApi } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
+const route = useRoute()
+
+// Tab 控制（支持从工作台跳转时默认打开账号审批）
+const activeTab = ref('0')
 
 // 提醒规则
 const insuranceNodes = ref([30, 15, 7, 3])
@@ -208,6 +213,9 @@ const loadingRegs = ref(false)
 const regStatusFilter = ref(null)
 
 onMounted(() => {
+  if (route.query.tab === 'registration') {
+    activeTab.value = '2'
+  }
   loadSettings()
   loadUsers()
   loadRegistrations()
