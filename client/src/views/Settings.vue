@@ -67,6 +67,42 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
+
+      <!-- 账号审批 -->
+      <el-tab-pane label="账号审批">
+        <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px">
+          <el-radio-group v-model="regStatusFilter" @change="loadRegistrations">
+            <el-radio-button :value="null">全部</el-radio-button>
+            <el-radio-button :value="0">待审批</el-radio-button>
+            <el-radio-button :value="1">已通过</el-radio-button>
+            <el-radio-button :value="2">已拒绝</el-radio-button>
+          </el-radio-group>
+          <el-button :icon="Refresh" @click="loadRegistrations">刷新</el-button>
+        </div>
+        <el-table :data="registrations" stripe v-loading="loadingRegs">
+          <el-table-column prop="username" label="用户名" width="120" />
+          <el-table-column prop="realName" label="姓名" width="100" />
+          <el-table-column prop="employeeNo" label="工号" width="120" />
+          <el-table-column prop="department" label="部门" width="140" />
+          <el-table-column prop="phone" label="手机号" width="130" />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="regStatusTag(row.status)">{{ regStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="申请时间" width="170" />
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <template v-if="row.status === 0">
+                <el-button type="success" size="small" @click="approveReg(row)">通过</el-button>
+                <el-button type="danger" size="small" @click="rejectReg(row)">拒绝</el-button>
+              </template>
+              <span v-else-if="row.status === 2" style="color: #909399">已拒绝</span>
+              <span v-else style="color: #67c23a">已通过</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 添加用户对话框 -->
@@ -116,10 +152,10 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Refresh } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { reminderConfigApi, userApi, systemConfigApi } from '@/api'
-import { ElMessage } from 'element-plus'
+import { reminderConfigApi, userApi, systemConfigApi, registrationApi } from '@/api'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 
@@ -166,10 +202,71 @@ const resetRules = {
   ],
 }
 
+// 账号审批
+const registrations = ref([])
+const loadingRegs = ref(false)
+const regStatusFilter = ref(null)
+
 onMounted(() => {
   loadSettings()
   loadUsers()
+  loadRegistrations()
 })
+
+async function loadRegistrations() {
+  loadingRegs.value = true
+  try {
+    registrations.value = await registrationApi.list(regStatusFilter.value)
+  } catch (e) {
+    ElMessage.error('加载申请列表失败：' + (e.message || '未知错误'))
+  } finally {
+    loadingRegs.value = false
+  }
+}
+
+function regStatusLabel(status) {
+  if (status === 1) return '已通过'
+  if (status === 2) return '已拒绝'
+  return '待审批'
+}
+
+function regStatusTag(status) {
+  if (status === 1) return 'success'
+  if (status === 2) return 'info'
+  return 'warning'
+}
+
+async function approveReg(row) {
+  try {
+    await registrationApi.approve(row.id)
+    ElMessage.success('已通过，用户可登录')
+    loadRegistrations()
+  } catch (e) {
+    ElMessage.error('操作失败：' + (e.message || '未知错误'))
+  }
+}
+
+async function rejectReg(row) {
+  let reason = ''
+  try {
+    const res = await ElMessageBox.prompt('请输入拒绝原因', '拒绝申请', {
+      confirmButtonText: '确定拒绝',
+      cancelButtonText: '取消',
+      inputType: 'textarea',
+      inputPlaceholder: '可选，说明拒绝原因',
+    })
+    reason = res.value || ''
+  } catch (e) {
+    return // 用户取消
+  }
+  try {
+    await registrationApi.reject(row.id, reason)
+    ElMessage.success('已拒绝')
+    loadRegistrations()
+  } catch (e) {
+    ElMessage.error('操作失败：' + (e.message || '未知错误'))
+  }
+}
 
 async function loadSettings() {
   try {

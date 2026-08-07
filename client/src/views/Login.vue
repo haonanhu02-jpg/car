@@ -21,8 +21,42 @@
 
       <div class="login-hint">
         <p>请使用管理员分配的账号登录</p>
+        <p class="register-link" @click="registerDialogVisible = true">
+          还没有账号？<span>申请注册</span>
+        </p>
       </div>
     </div>
+
+    <!-- 自助注册申请对话框 -->
+    <el-dialog v-model="registerDialogVisible" title="申请注册账号" width="460px" @closed="resetRegisterForm">
+      <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="84px">
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="registerForm.username" placeholder="登录用户名" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="registerForm.password" type="password" placeholder="至少 6 位" show-password />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" show-password />
+        </el-form-item>
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="registerForm.realName" placeholder="真实姓名" />
+        </el-form-item>
+        <el-form-item label="工号" prop="employeeNo">
+          <el-input v-model="registerForm.employeeNo" placeholder="员工工号" />
+        </el-form-item>
+        <el-form-item label="部门" prop="department">
+          <el-input v-model="registerForm.department" placeholder="所属部门" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="registerForm.phone" placeholder="11 位手机号" maxlength="11" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="registerDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="registerLoading" @click="submitRegister">提交申请</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -31,6 +65,8 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { registrationApi } from '@/api'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -57,6 +93,70 @@ async function handleLogin() {
     router.push('/dashboard')
   } finally {
     loading.value = false
+  }
+}
+
+// ── 自助注册申请 ──
+const registerDialogVisible = ref(false)
+const registerLoading = ref(false)
+const registerFormRef = ref(null)
+
+const registerForm = reactive({
+  username: '',
+  password: '',
+  confirmPassword: '',
+  realName: '',
+  employeeNo: '',
+  department: '',
+  phone: '',
+})
+
+const registerRules = {
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码至少 6 位', trigger: 'blur' },
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入密码', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== registerForm.password) {
+          callback(new Error('两次输入的密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  employeeNo: [{ required: true, message: '请输入工号', trigger: 'blur' }],
+  department: [{ required: true, message: '请输入部门', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1\d{10}$/, message: '请输入正确的 11 位手机号', trigger: 'blur' },
+  ],
+}
+
+function resetRegisterForm() {
+  registerFormRef.value?.resetFields()
+}
+
+async function submitRegister() {
+  if (!registerFormRef.value) return
+  const valid = await registerFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  registerLoading.value = true
+  try {
+    await registrationApi.apply({ ...registerForm })
+    ElMessage.success('申请已提交，请等待管理员审批')
+    registerDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error('提交失败：' + (e.message || '未知错误'))
+  } finally {
+    registerLoading.value = false
   }
 }
 </script>
@@ -96,5 +196,19 @@ async function handleLogin() {
   color: #c0c4cc;
   font-size: 12px;
   margin-top: 16px;
+}
+
+.register-link {
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.register-link span {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.register-link:hover span {
+  text-decoration: underline;
 }
 </style>

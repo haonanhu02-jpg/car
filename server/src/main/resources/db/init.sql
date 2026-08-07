@@ -110,6 +110,27 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
 -- ─────────────────────────────────────────
+--  5.5 账号注册申请表
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `user_registration` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `username` VARCHAR(50) NOT NULL COMMENT '登录账号',
+    `password` VARCHAR(255) NOT NULL COMMENT '密码（BCrypt加密）',
+    `real_name` VARCHAR(50) NOT NULL COMMENT '真实姓名',
+    `employee_no` VARCHAR(50) NOT NULL COMMENT '工号',
+    `department` VARCHAR(100) NOT NULL COMMENT '部门',
+    `phone` VARCHAR(20) NOT NULL COMMENT '手机号',
+    `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0-待审批, 1-已通过, 2-已拒绝',
+    `reject_reason` VARCHAR(255) DEFAULT NULL COMMENT '拒绝原因',
+    `reviewer_id` INT DEFAULT NULL COMMENT '审批人ID',
+    `reviewed_at` DATETIME DEFAULT NULL COMMENT '审批时间',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_reg_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='账号注册申请表';
+
+-- ─────────────────────────────────────────
 --  6. 操作日志表
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `operation_log` (

@@ -45,6 +45,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
     // 1. 放行登录接口（必须和 AuthController 里的路径一致）
                 .requestMatchers("/api/auth/login").permitAll()
+    // 1.1 放行自助注册申请提交接口（仅精确匹配 POST /api/registrations，审批类子路径仍需认证+管理员）
+                .requestMatchers(HttpMethod.POST, "/api/registrations").permitAll()
     // 2. 彻底消除 favicon 报错的根源：放行根路径和静态资源
                 .requestMatchers("/", "/favicon.ico", "/index.html", "/error").permitAll()
     // 3. 放行 H2 控制台和 API 文档（仅联调阶段）
