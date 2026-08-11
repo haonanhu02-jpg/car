@@ -61,7 +61,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { User, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -72,6 +72,18 @@ const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
 const formRef = ref(null)
+
+// 进入登录页先清掉可能残留的旧登录态，避免路由守卫用失效 token 自动跳进受限页面
+onMounted(() => {
+  userStore.token = ''
+  userStore.username = ''
+  userStore.realName = ''
+  userStore.role = ''
+  localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  localStorage.removeItem('realName')
+  localStorage.removeItem('role')
+})
 
 const form = reactive({
   username: '',

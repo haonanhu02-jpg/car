@@ -86,23 +86,27 @@ const expiringVehicles = ref([])
 const pendingRegCount = ref(0)
 
 onMounted(async () => {
+  // 主数据先加载，不受待办请求影响
   loading.value = true
   try {
-    const requests = [
+    const [s, v] = await Promise.all([
       dashboardApi.getStatistics(),
       dashboardApi.getExpiringVehicles(),
-    ]
-    if (userStore.isAdmin) {
-      requests.push(registrationApi.list(0).then(list => list.length))
-    }
-    const [s, v, regCount] = await Promise.all(requests)
+    ])
     stats.value = s
     expiringVehicles.value = v
-    if (userStore.isAdmin) {
-      pendingRegCount.value = regCount
-    }
   } finally {
     loading.value = false
+  }
+
+  // 注册申请待办是管理员的增强提示：独立加载、静默失败，绝不阻断工作台主体
+  if (userStore.isAdmin) {
+    try {
+      const list = await registrationApi.list(0, { silent: true })
+      pendingRegCount.value = list.length
+    } catch {
+      pendingRegCount.value = 0
+    }
   }
 })
 

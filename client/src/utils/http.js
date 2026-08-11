@@ -27,6 +27,10 @@ http.interceptors.response.use(
     return data
   },
   error => {
+    // silent 请求：不弹全局提示，仅 reject（用于可失败的增强类请求，如工作台待办轮询）
+    if (error.config?.silent) {
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       router.push('/login')

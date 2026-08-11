@@ -85,8 +85,8 @@ export const registrationApi = {
   // 自助提交注册申请（公开）
   apply: (data) => http.post('/registrations', data),
   // 管理员：申请列表（status: 0待审批 1已通过 2已拒绝，不传查全部）
-  list: (status) =>
-    http.get('/registrations', { params: status != null ? { status } : {} }),
+  list: (status, config) =>
+    http.get('/registrations', { params: status != null ? { status } : {}, ...config }),
   // 管理员：通过申请
   approve: (id) => http.post(`/registrations/${id}/approve`),
   // 管理员：拒绝申请（reason 可选）
