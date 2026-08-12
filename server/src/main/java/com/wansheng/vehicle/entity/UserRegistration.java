@@ -1,6 +1,7 @@
 package com.wansheng.vehicle.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +25,8 @@ public class UserRegistration {
     @TableId(type = IdType.AUTO)
     private Integer id;
 
-    /** 登录用户名 */
+    /** 系统内部标识，不作为登录名，也不返回前端 */
+    @JsonIgnore
     private String username;
 
     /** 密码（BCrypt 加密，审批通过时直接写入 sys_user） */

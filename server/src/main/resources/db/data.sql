@@ -3,10 +3,9 @@
 -- 配合 schema.sql 的 IF NOT EXISTS，重启不会重复插入）
 -- =============================================
 
--- 默认用户（密码都是 admin123 的 BCrypt 哈希）
+-- 唯一的默认管理员（密码 admin123；username 仅为内部标识，登录使用姓名）
 INSERT IGNORE INTO sys_user (id, username, password, real_name, role, phone) VALUES
-(1, 'admin', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '张姐', 'ADMIN', '13800000001'),
-(2, 'viewer', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '李四', 'VIEWER', '13800000002');
+(1, 'admin', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '钟正根', 'ADMIN', '13606820006');
 
 -- 提醒规则
 INSERT IGNORE INTO reminder_config (id, type, node_days, enabled, remind_methods) VALUES

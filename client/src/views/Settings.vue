@@ -37,8 +37,7 @@
           <el-button type="primary" :icon="Plus" @click="openAddDialog">添加用户</el-button>
         </div>
         <el-table :data="users" stripe v-loading="loadingUsers">
-          <el-table-column prop="username" label="用户名" width="120" />
-          <el-table-column prop="realName" label="姓名" width="100" />
+          <el-table-column prop="realName" label="姓名" width="120" />
           <el-table-column label="角色" width="100">
             <template #default="{ row }">
               <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'">
@@ -87,8 +86,7 @@
           <el-button :icon="Refresh" @click="loadRegistrations">刷新</el-button>
         </div>
         <el-table :data="registrations" stripe v-loading="loadingRegs">
-          <el-table-column prop="username" label="用户名" width="120" />
-          <el-table-column prop="realName" label="姓名" width="100" />
+          <el-table-column prop="realName" label="姓名" width="110" />
           <el-table-column prop="employeeNo" label="工号" width="120" />
           <el-table-column prop="department" label="部门" width="140" />
           <el-table-column prop="phone" label="手机号" width="130" />
@@ -98,9 +96,10 @@
             </template>
           </el-table-column>
           <el-table-column prop="createdAt" label="申请时间" width="170" />
-          <el-table-column label="操作" width="160">
+          <el-table-column label="操作" width="220">
             <template #default="{ row }">
               <template v-if="row.status === 0">
+                <el-button type="primary" size="small" @click="openEditRegistration(row)">编辑</el-button>
                 <el-button type="success" size="small" @click="approveReg(row)">通过</el-button>
                 <el-button type="danger" size="small" @click="rejectReg(row)">拒绝</el-button>
               </template>
@@ -115,20 +114,11 @@
     <!-- 添加用户对话框 -->
     <el-dialog v-model="addDialogVisible" title="添加用户" width="420px">
       <el-form :model="addForm" label-width="80px" :rules="addRules" ref="addFormRef">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="addForm.username" placeholder="登录用户名" />
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="addForm.realName" placeholder="姓名（登录时使用）" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input v-model="addForm.password" type="password" placeholder="至少 6 位" />
-        </el-form-item>
-        <el-form-item label="姓名" prop="realName">
-          <el-input v-model="addForm.realName" placeholder="真实姓名" />
-        </el-form-item>
-        <el-form-item label="角色" prop="role">
-          <el-select v-model="addForm.role" placeholder="请选择角色" style="width: 100%">
-            <el-option label="管理员" value="ADMIN" />
-            <el-option label="普通员工" value="VIEWER" />
-          </el-select>
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
           <el-input v-model="addForm.phone" placeholder="手机号" />
@@ -143,9 +133,6 @@
     <!-- 编辑用户对话框 -->
     <el-dialog v-model="editDialogVisible" title="编辑用户信息" width="420px" @closed="editFormRef?.clearValidate()">
       <el-form :model="editForm" label-width="80px" :rules="editRules" ref="editFormRef">
-        <el-form-item label="用户名">
-          <el-input :model-value="currentUser?.username" disabled />
-        </el-form-item>
         <el-form-item label="姓名" prop="realName">
           <el-input v-model="editForm.realName" placeholder="真实姓名" />
         </el-form-item>
@@ -156,6 +143,28 @@
       <template #footer>
         <el-button @click="editDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="savingUser" @click="submitEditUser">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑待审批申请 -->
+    <el-dialog v-model="editRegistrationVisible" title="编辑申请信息" width="440px">
+      <el-form ref="editRegistrationFormRef" :model="editRegistrationForm" :rules="editRegistrationRules" label-width="80px">
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="editRegistrationForm.realName" placeholder="姓名（登录时使用）" />
+        </el-form-item>
+        <el-form-item label="工号" prop="employeeNo">
+          <el-input v-model="editRegistrationForm.employeeNo" />
+        </el-form-item>
+        <el-form-item label="部门" prop="department">
+          <el-input v-model="editRegistrationForm.department" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="editRegistrationForm.phone" maxlength="11" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editRegistrationVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingRegistration" @click="saveRegistration">保存</el-button>
       </template>
     </el-dialog>
 
@@ -207,10 +216,8 @@ const savingUser = ref(false)
 
 const addFormRef = ref(null)
 const addForm = reactive({
-  username: '',
   password: '',
   realName: '',
-  role: 'VIEWER',
   phone: '',
 })
 
@@ -226,12 +233,11 @@ const editForm = reactive({
 })
 
 const addRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码至少 6 位', trigger: 'blur' },
   ],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
 }
 
 const resetRules = {
@@ -252,6 +258,20 @@ const editRules = {
 const registrations = ref([])
 const loadingRegs = ref(false)
 const regStatusFilter = ref(null)
+const editRegistrationVisible = ref(false)
+const editRegistrationFormRef = ref(null)
+const editingRegistrationId = ref(null)
+const savingRegistration = ref(false)
+const editRegistrationForm = reactive({ realName: '', employeeNo: '', department: '', phone: '' })
+const editRegistrationRules = {
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  employeeNo: [{ required: true, message: '请输入工号', trigger: 'blur' }],
+  department: [{ required: true, message: '请输入部门', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1\d{10}$/, message: '请输入正确的 11 位手机号', trigger: 'blur' },
+  ],
+}
 
 onMounted(() => {
   if (route.query.tab === 'registration') {
@@ -361,10 +381,8 @@ async function loadUsers() {
 }
 
 function openAddDialog() {
-  addForm.username = ''
   addForm.password = ''
   addForm.realName = ''
-  addForm.role = 'VIEWER'
   addForm.phone = ''
   addDialogVisible.value = true
 }
@@ -392,6 +410,33 @@ async function toggleStatus(row, enabled) {
     loadUsers()
   } catch (e) {
     ElMessage.error('状态更新失败：' + (e.message || '未知错误'))
+  }
+}
+
+function openEditRegistration(row) {
+  editingRegistrationId.value = row.id
+  Object.assign(editRegistrationForm, {
+    realName: row.realName || '',
+    employeeNo: row.employeeNo || '',
+    department: row.department || '',
+    phone: row.phone || '',
+  })
+  editRegistrationVisible.value = true
+}
+
+async function saveRegistration() {
+  const valid = await editRegistrationFormRef.value?.validate().catch(() => false)
+  if (!valid || !editingRegistrationId.value) return
+  savingRegistration.value = true
+  try {
+    await registrationApi.update(editingRegistrationId.value, { ...editRegistrationForm })
+    ElMessage.success('申请信息更新成功')
+    editRegistrationVisible.value = false
+    await loadRegistrations()
+  } catch (e) {
+    ElMessage.error('更新失败：' + (e.message || '未知错误'))
+  } finally {
+    savingRegistration.value = false
   }
 }
 
@@ -430,7 +475,7 @@ async function deleteUser(row) {
   }
   try {
     await ElMessageBox.confirm(
-      `删除后账号“${row.username}”将无法登录，且该操作不可恢复。是否继续？`,
+      `删除后“${row.realName}”将无法登录，且该操作不可恢复。是否继续？`,
       '删除用户',
       {
         type: 'warning',
@@ -467,4 +512,3 @@ async function submitResetPassword() {
   })
 }
 </script>
-

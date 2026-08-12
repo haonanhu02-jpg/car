@@ -16,8 +16,8 @@ export const useUserStore = defineStore('user', {
   },
 
   actions: {
-    async login(username, password) {
-      const data = await authApi.login(username, password)
+    async login(realName, password) {
+      const data = await authApi.login(realName, password)
       this.token = data.token
       this.username = data.username
       this.realName = data.realName
@@ -46,4 +46,3 @@ export const useUserStore = defineStore('user', {
     },
   },
 })
-

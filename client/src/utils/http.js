@@ -19,6 +19,9 @@ http.interceptors.request.use(config => {
 // 响应拦截器 — 统一错误处理
 http.interceptors.response.use(
   response => {
+    if (response.config.responseType === 'blob') {
+      return response.data
+    }
     const { code, message, data } = response.data
     if (code !== 0) {
       ElMessage.error(message || '请求失败')

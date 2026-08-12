@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 用户管理 API（仅管理员）
@@ -48,35 +49,40 @@ public class UserController {
     @Operation(summary = "新增用户")
     @PostMapping
     public ApiResponse<Void> create(@RequestBody CreateUserRequest request) {
-        if (request.getUsername() == null || request.getUsername().isBlank()) {
-            return ApiResponse.error("用户名不能为空");
-        }
         if (request.getPassword() == null || request.getPassword().length() < 6) {
             return ApiResponse.error("密码至少 6 位");
         }
+        String realName = trimToNull(request.getRealName());
+        if (realName == null) {
+            return ApiResponse.error("姓名不能为空");
+        }
+        String phone = request.getPhone() == null ? null : request.getPhone().trim();
+        if (phone != null && !phone.isEmpty() && !phone.matches("^1\\d{10}$")) {
+            return ApiResponse.error("请输入正确的 11 位手机号");
+        }
 
-        // 检查用户名是否已存在
+        // 姓名就是登录名，必须保持唯一；username 仅作为系统内部标识。
         Long count = sysUserMapper.selectCount(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
-                        .eq(SysUser::getUsername, request.getUsername())
+                        .eq(SysUser::getRealName, realName)
         );
         if (count != null && count > 0) {
-            return ApiResponse.error("用户名已存在");
+            return ApiResponse.error("该姓名已存在");
         }
 
         SysUser user = SysUser.builder()
-                .username(request.getUsername().trim())
+                .username(generateInternalUsername())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .realName(request.getRealName())
-                .role(request.getRole() != null ? request.getRole() : "VIEWER")
-                .phone(request.getPhone())
+                .realName(realName)
+                .role("VIEWER")
+                .phone(phone)
                 .status(1)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
         sysUserMapper.insert(user);
-        saveUserLog("CREATE_USER", "创建用户：" + user.getUsername() + "，角色：" + user.getRole(), null, user);
+        saveUserLog("CREATE_USER", "创建普通员工：" + user.getRealName(), null, user);
         return ApiResponse.success(null, "用户创建成功");
     }
 
@@ -96,6 +102,14 @@ public class UserController {
         if (phone != null && !phone.isEmpty() && !phone.matches("^1\\d{10}$")) {
             return ApiResponse.error("请输入正确的 11 位手机号");
         }
+        Long duplicateNameCount = sysUserMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysUser>()
+                        .eq(SysUser::getRealName, realName)
+                        .ne(SysUser::getId, id)
+        );
+        if (duplicateNameCount != null && duplicateNameCount > 0) {
+            return ApiResponse.error("该姓名已存在");
+        }
 
         SysUser update = new SysUser();
         update.setId(id);
@@ -106,7 +120,7 @@ public class UserController {
 
         SysUser updatedUser = sysUserMapper.selectById(id);
         updatedUser.setPassword(null);
-        saveUserLog("UPDATE_USER", "修改用户 " + user.getUsername() + " 的基础信息", user, updatedUser);
+        saveUserLog("UPDATE_USER", "修改用户 " + user.getRealName() + " 的基础信息", user, updatedUser);
         return ApiResponse.success(updatedUser, "用户信息更新成功");
     }
 
@@ -199,6 +213,10 @@ public class UserController {
         return value.trim();
     }
 
+    private String generateInternalUsername() {
+        return "u_" + UUID.randomUUID().toString().replace("-", "");
+    }
+
     private void saveUserLog(String action, String description, Object before, Object after) {
         try {
             String username = SecurityUtils.getCurrentUsername();
@@ -237,10 +255,8 @@ public class UserController {
 
     @Data
     public static class CreateUserRequest {
-        private String username;
         private String password;
         private String realName;
-        private String role;
         private String phone;
     }
 
@@ -260,4 +276,3 @@ public class UserController {
         private String password;
     }
 }
-

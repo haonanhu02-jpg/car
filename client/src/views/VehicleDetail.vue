@@ -4,7 +4,6 @@
     <div class="page-header">
       <el-button text :icon="ArrowLeft" @click="$router.back()">返回列表</el-button>
       <h3 v-if="vehicle">{{ vehicle.plateNumber }}（{{ vehicle.brand }}）</h3>
-      <el-button type="primary" v-if="userStore.isAdmin" @click="showEditBasic = true">编辑基本信息</el-button>
     </div>
 
     <!-- 基本信息卡片 -->
@@ -106,7 +105,6 @@ const vehicle = ref(null)
 // 对话框
 const showRenewDialog = ref(false)
 const showInspectionDialog = ref(false)
-const showEditBasic = ref(false)
 const inspectionDate = ref(null)
 const inspectionExpireDate = ref(null)
 

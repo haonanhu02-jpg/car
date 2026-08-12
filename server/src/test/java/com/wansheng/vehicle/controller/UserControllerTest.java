@@ -64,6 +64,32 @@ class UserControllerTest {
     }
 
     @Test
+    void createsOnlyViewerWithNameAsLoginIdentity() {
+        PasswordEncoder encoder = mock(PasswordEncoder.class);
+        controller = new UserController(
+                sysUserMapper,
+                mock(OperationLogMapper.class),
+                encoder,
+                new ObjectMapper()
+        );
+        when(sysUserMapper.selectCount(any())).thenReturn(0L);
+        when(encoder.encode("123456")).thenReturn("encoded");
+        UserController.CreateUserRequest request = new UserController.CreateUserRequest();
+        request.setRealName("陶君君");
+        request.setPassword("123456");
+        request.setPhone("18358586908");
+
+        var response = controller.create(request);
+
+        assertThat(response.getCode()).isZero();
+        ArgumentCaptor<SysUser> captor = ArgumentCaptor.forClass(SysUser.class);
+        verify(sysUserMapper).insert(captor.capture());
+        assertThat(captor.getValue().getRole()).isEqualTo("VIEWER");
+        assertThat(captor.getValue().getRealName()).isEqualTo("陶君君");
+        assertThat(captor.getValue().getUsername()).startsWith("u_");
+    }
+
+    @Test
     void updatesCurrentAdministratorNameWithoutChangingRole() {
         SysUser admin = user(1, "admin", "张姐", "ADMIN", "13800000001", 1);
         SysUser updated = user(1, "admin", "张经理", "ADMIN", "13800000001", 1);
@@ -128,4 +154,3 @@ class UserControllerTest {
                 .build();
     }
 }
-

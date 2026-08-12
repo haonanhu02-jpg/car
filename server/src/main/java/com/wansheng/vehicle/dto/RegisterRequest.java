@@ -8,9 +8,6 @@ import lombok.Data;
 @Data
 public class RegisterRequest {
 
-    /** 登录用户名 */
-    private String username;
-
     /** 登录密码（明文，后端加密存储） */
     private String password;
 

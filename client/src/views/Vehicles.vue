@@ -148,6 +148,28 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item v-if="editingId" label="车辆登记证">
+          <div class="certificate-panel">
+            <div v-if="certificateInfo" class="certificate-current">
+              <span>{{ certificateInfo.fileName }}（{{ formatFileSize(certificateInfo.fileSize) }}）</span>
+              <el-button link type="primary" :loading="viewingCertificate" @click="viewCertificate">查看</el-button>
+              <el-button link type="danger" @click="deleteCertificate">删除</el-button>
+            </div>
+            <el-upload
+              :show-file-list="false"
+              accept="image/*,.pdf,application/pdf"
+              :before-upload="uploadCertificate"
+              :disabled="uploadingCertificate"
+            >
+              <el-button :loading="uploadingCertificate" :icon="Upload">
+                {{ certificateInfo ? '替换扫描件' : '上传扫描件' }}
+              </el-button>
+              <template #tip>
+                <div class="el-upload__tip">支持手机扫描图片或 PDF，单个文件不超过 10MB</div>
+              </template>
+            </el-upload>
+          </div>
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -219,6 +241,9 @@ const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref(null)
 const formRef = ref(null)
+const certificateInfo = ref(null)
+const uploadingCertificate = ref(false)
+const viewingCertificate = ref(false)
 
 // 批量导入 / 导出
 const importVisible = ref(false)
@@ -312,10 +337,11 @@ function goDetail(row) {
 function showCreateDialog() {
   editingId.value = null
   resetForm()
+  certificateInfo.value = null
   dialogVisible.value = true
 }
 
-function showEditDialog(row) {
+async function showEditDialog(row) {
   editingId.value = row.id
   Object.assign(form, {
     plateNumber: row.plateNumber,
@@ -333,6 +359,12 @@ function showEditDialog(row) {
     remark: row.remark,
   })
   dialogVisible.value = true
+  certificateInfo.value = null
+  try {
+    certificateInfo.value = await vehicleApi.certificateInfo(row.id)
+  } catch (e) {
+    // 附件信息加载失败不阻止编辑车辆基础信息
+  }
 }
 
 function resetForm() {
@@ -342,6 +374,58 @@ function resetForm() {
     insuranceType: '', policyNumber: '', owner: '', etcBank: '',
     oilCardNumber: '', remark: '',
   })
+}
+
+async function uploadCertificate(file) {
+  if (!editingId.value) return false
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error('车辆登记证文件不能超过 10MB')
+    return false
+  }
+  const supported = file.type === 'application/pdf' || file.type.startsWith('image/')
+  if (!supported) {
+    ElMessage.error('仅支持图片或 PDF 格式')
+    return false
+  }
+  uploadingCertificate.value = true
+  try {
+    certificateInfo.value = await vehicleApi.uploadCertificate(editingId.value, file)
+    ElMessage.success('车辆登记证上传成功')
+  } finally {
+    uploadingCertificate.value = false
+  }
+  return false
+}
+
+async function viewCertificate() {
+  viewingCertificate.value = true
+  try {
+    const blob = await vehicleApi.viewCertificate(editingId.value)
+    const url = URL.createObjectURL(blob)
+    const opened = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!opened) ElMessage.warning('浏览器拦截了新窗口，请允许弹窗后重试')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } finally {
+    viewingCertificate.value = false
+  }
+}
+
+async function deleteCertificate() {
+  try {
+    await ElMessageBox.confirm('确定删除这份车辆登记证扫描件吗？', '删除车辆登记证', { type: 'warning' })
+    await vehicleApi.deleteCertificate(editingId.value)
+    certificateInfo.value = null
+    ElMessage.success('车辆登记证已删除')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') throw e
+  }
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 KB'
+  return bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.ceil(bytes / 1024)} KB`
 }
 
 async function handleSave() {
@@ -436,3 +520,16 @@ function getStatusClass(row) {
   return 'status-normal'
 }
 </script>
+
+<style scoped>
+.certificate-panel {
+  width: 100%;
+}
+
+.certificate-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+</style>

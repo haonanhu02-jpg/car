@@ -5,14 +5,22 @@ import com.wansheng.vehicle.dto.*;
 import com.wansheng.vehicle.entity.InsuranceHistory;
 import com.wansheng.vehicle.entity.InspectionHistory;
 import com.wansheng.vehicle.entity.Vehicle;
+import com.wansheng.vehicle.entity.VehicleRegistrationCertificate;
+import com.wansheng.vehicle.service.VehicleCertificateService;
 import com.wansheng.vehicle.service.VehicleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * 车辆管理 API
@@ -26,6 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class VehicleController {
 
     private final VehicleService vehicleService;
+    private final VehicleCertificateService certificateService;
 
     // ══════════════════════════════════════
     //  查询接口
@@ -50,6 +59,32 @@ public class VehicleController {
     @GetMapping("/{id}")
     public ApiResponse<Vehicle> detail(@PathVariable Integer id) {
         return ApiResponse.success(vehicleService.getDetail(id));
+    }
+
+    @Operation(summary = "获取车辆登记证信息")
+    @GetMapping("/{id}/registration-certificate/info")
+    public ApiResponse<VehicleCertificateInfo> registrationCertificateInfo(@PathVariable Integer id) {
+        return ApiResponse.success(certificateService.getInfo(id));
+    }
+
+    @Operation(summary = "查看车辆登记证扫描件")
+    @GetMapping("/{id}/registration-certificate")
+    public ResponseEntity<byte[]> registrationCertificate(@PathVariable Integer id) {
+        VehicleRegistrationCertificate certificate = certificateService.getFile(id);
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(certificate.getContentType());
+        } catch (Exception ignored) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        ContentDisposition disposition = ContentDisposition.inline()
+                .filename(certificate.getFileName(), StandardCharsets.UTF_8)
+                .build();
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .contentLength(certificate.getFileSize())
+                .body(certificate.getFileData());
     }
 
     // ══════════════════════════════════════
@@ -88,6 +123,22 @@ public class VehicleController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Vehicle> update(@PathVariable Integer id, @Valid @RequestBody VehicleDTO dto) {
         return ApiResponse.success(vehicleService.update(id, dto), "更新成功");
+    }
+
+    @Operation(summary = "上传或替换车辆登记证扫描件")
+    @PostMapping("/{id}/registration-certificate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<VehicleCertificateInfo> uploadRegistrationCertificate(
+            @PathVariable Integer id, @RequestParam("file") MultipartFile file) {
+        return ApiResponse.success(certificateService.upload(id, file), "车辆登记证上传成功");
+    }
+
+    @Operation(summary = "删除车辆登记证扫描件")
+    @DeleteMapping("/{id}/registration-certificate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> deleteRegistrationCertificate(@PathVariable Integer id) {
+        certificateService.delete(id);
+        return ApiResponse.success(null, "车辆登记证已删除");
     }
 
     @Operation(summary = "删除车辆（软删除）")

@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS `vehicles` (
     KEY `idx_vehicle_type` (`vehicle_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='车辆台账主表';
 
+-- 每台车辆唯一的车辆登记证扫描件（存数据库，容器重建后仍保留）
+CREATE TABLE IF NOT EXISTS `vehicle_registration_certificate` (
+    `vehicle_id` INT NOT NULL,
+    `file_name` VARCHAR(255) NOT NULL,
+    `content_type` VARCHAR(100) NOT NULL,
+    `file_size` BIGINT NOT NULL,
+    `file_data` LONGBLOB NOT NULL,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`vehicle_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='车辆登记证扫描件';
+
 -- ─────────────────────────────────────────
 --  2. 保险历史记录表
 -- ─────────────────────────────────────────
@@ -171,8 +182,7 @@ CREATE TABLE IF NOT EXISTS `reminder_config` (
 
 -- 默认管理员账号: admin / admin123
 INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`, `phone`) VALUES
-('admin', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '张姐', 'ADMIN', '13800000001'),
-('viewer', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '李四', 'VIEWER', '13800000002');
+('admin', '$2a$10$WEqt8XQemYW1VCVBFarkKuOnvQtZ2SexYT2TonjSmwu5EXoQ4xS0.', '钟正根', 'ADMIN', '13606820006');
 
 -- 默认提醒规则
 INSERT INTO `reminder_config` (`type`, `node_days`, `enabled`, `remind_methods`) VALUES

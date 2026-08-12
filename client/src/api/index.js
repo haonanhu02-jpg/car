@@ -4,8 +4,8 @@ import http from '@/utils/http'
  * 认证 API
  */
 export const authApi = {
-  login: (username, password) =>
-    http.post('/auth/login', { username, password }),
+  login: (realName, password) =>
+    http.post('/auth/login', { realName, password }),
 }
 
 /**
@@ -30,6 +30,14 @@ export const vehicleApi = {
     http.post(`/vehicles/${id}/update-inspection`, null, {
       params: { inspectionDate, expireDate },
     }),
+  certificateInfo: (id) => http.get(`/vehicles/${id}/registration-certificate/info`),
+  viewCertificate: (id) => http.get(`/vehicles/${id}/registration-certificate`, { responseType: 'blob' }),
+  uploadCertificate: (id, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.post(`/vehicles/${id}/registration-certificate`, formData)
+  },
+  deleteCertificate: (id) => http.delete(`/vehicles/${id}/registration-certificate`),
   // 上传 Excel 批量导入（multipart/form-data，后端按车牌号去重：存在更新，不存在新增）
   importExcel: (file) => {
     const formData = new FormData()
@@ -89,6 +97,7 @@ export const registrationApi = {
   // 管理员：申请列表（status: 0待审批 1已通过 2已拒绝，不传查全部）
   list: (status, config) =>
     http.get('/registrations', { params: status != null ? { status } : {}, ...config }),
+  update: (id, data) => http.put(`/registrations/${id}`, data),
   // 管理员：通过申请
   approve: (id) => http.post(`/registrations/${id}/approve`),
   // 管理员：拒绝申请（reason 可选）
@@ -110,4 +119,3 @@ export const operationLogApi = {
   list: (params) => http.get('/operation-logs', { params }),
   actions: () => http.get('/operation-logs/actions'),
 }
-

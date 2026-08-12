@@ -27,10 +27,11 @@ public class AuthController {
     @Operation(summary = "用户登录")
     @PostMapping("/login")
     public ApiResponse<Map<String, String>> login(@RequestBody LoginRequest request) {
-        var user = sysUserMapper.findByUsername(request.getUsername());
+        String realName = request.getRealName() == null ? null : request.getRealName().trim();
+        var user = realName == null ? null : sysUserMapper.findByRealName(realName);
 
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            return ApiResponse.error("用户名或密码错误");
+            return ApiResponse.error("姓名或密码错误");
         }
 
         String token = jwtUtils.generateToken(user.getUsername(), user.getRole());
@@ -45,7 +46,7 @@ public class AuthController {
 
     @Data
     static class LoginRequest {
-        private String username;
+        private String realName;
         private String password;
     }
 }

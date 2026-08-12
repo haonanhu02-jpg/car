@@ -5,8 +5,8 @@
       <p class="login-subtitle">PC 后台管理端</p>
 
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @submit.prevent="handleLogin">
-        <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="请输入用户名" :prefix-icon="User" />
+        <el-form-item prop="realName">
+          <el-input v-model="form.realName" placeholder="请输入姓名" :prefix-icon="User" />
         </el-form-item>
         <el-form-item prop="password">
           <el-input v-model="form.password" type="password" placeholder="请输入密码"
@@ -20,7 +20,7 @@
       </el-form>
 
       <div class="login-hint">
-        <p>请使用管理员分配的账号登录</p>
+        <p>请使用姓名和管理员分配的密码登录</p>
         <p class="register-link" @click="registerDialogVisible = true">
           还没有账号？<span>申请注册</span>
         </p>
@@ -30,17 +30,14 @@
     <!-- 自助注册申请对话框 -->
     <el-dialog v-model="registerDialogVisible" title="申请注册账号" width="460px" @closed="resetRegisterForm">
       <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-width="84px">
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="registerForm.username" placeholder="登录用户名" />
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="registerForm.realName" placeholder="真实姓名（登录时使用）" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input v-model="registerForm.password" type="password" placeholder="至少 6 位" show-password />
         </el-form-item>
         <el-form-item label="确认密码" prop="confirmPassword">
           <el-input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" show-password />
-        </el-form-item>
-        <el-form-item label="姓名" prop="realName">
-          <el-input v-model="registerForm.realName" placeholder="真实姓名" />
         </el-form-item>
         <el-form-item label="工号" prop="employeeNo">
           <el-input v-model="registerForm.employeeNo" placeholder="员工工号" />
@@ -86,12 +83,12 @@ onMounted(() => {
 })
 
 const form = reactive({
-  username: '',
+  realName: '',
   password: '',
 })
 
 const rules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
@@ -101,7 +98,7 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    await userStore.login(form.username, form.password)
+    await userStore.login(form.realName, form.password)
     router.push('/dashboard')
   } finally {
     loading.value = false
@@ -114,7 +111,6 @@ const registerLoading = ref(false)
 const registerFormRef = ref(null)
 
 const registerForm = reactive({
-  username: '',
   password: '',
   confirmPassword: '',
   realName: '',
@@ -124,7 +120,6 @@ const registerForm = reactive({
 })
 
 const registerRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码至少 6 位', trigger: 'blur' },
