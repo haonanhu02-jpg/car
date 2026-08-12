@@ -2,6 +2,8 @@ package com.wansheng.vehicle.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wansheng.vehicle.dto.ApiResponse;
+import com.wansheng.vehicle.entity.SysUser;
+import com.wansheng.vehicle.repository.SysUserMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,6 +32,7 @@ import java.util.Collections;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
+    private final SysUserMapper sysUserMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -41,27 +44,34 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (token != null) {
             if (jwtUtils.validateToken(token)) {
                 String username = jwtUtils.getUsernameFromToken(token);
-                String role = jwtUtils.getRoleFromToken(token);
+                SysUser user = sysUserMapper.findByUsername(username);
+                if (user == null) {
+                    writeUnauthorized(response, "用户不存在或已被禁用，请重新登录");
+                    return;
+                }
 
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(
                                 username, null,
-                                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
                         );
 
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } else {
                 // Token 无效或过期 — 返回 401，而不是静默放行
-                response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                response.setCharacterEncoding("UTF-8");
-                objectMapper.writeValue(response.getWriter(),
-                        ApiResponse.error("Token 无效或已过期，请重新登录"));
+                writeUnauthorized(response, "Token 无效或已过期，请重新登录");
                 return;
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiResponse.error(message));
     }
 
     private String extractToken(HttpServletRequest request) {
@@ -72,3 +82,4 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         return null;
     }
 }
+

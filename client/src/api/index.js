@@ -74,8 +74,10 @@ export const reminderConfigApi = {
 export const userApi = {
   list: () => http.get('/users'),
   create: (data) => http.post('/users', data),
+  update: (id, data) => http.put(`/users/${id}`, data),
   updateStatus: (id, status) => http.put(`/users/${id}/status`, { status }),
   resetPassword: (id, password) => http.put(`/users/${id}/password`, { password }),
+  delete: (id) => http.delete(`/users/${id}`),
 }
 
 /**
@@ -108,3 +110,4 @@ export const operationLogApi = {
   list: (params) => http.get('/operation-logs', { params }),
   actions: () => http.get('/operation-logs/actions'),
 }
+

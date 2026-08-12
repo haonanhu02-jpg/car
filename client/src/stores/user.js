@@ -31,6 +31,11 @@ export const useUserStore = defineStore('user', {
       ElMessage.success(`欢迎回来，${data.realName || data.username}！`)
     },
 
+    updateProfile(realName) {
+      this.realName = realName || ''
+      localStorage.setItem('realName', this.realName)
+    },
+
     logout() {
       this.token = ''
       this.username = ''
@@ -41,3 +46,4 @@ export const useUserStore = defineStore('user', {
     },
   },
 })
+

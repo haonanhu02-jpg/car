@@ -42,7 +42,7 @@
           <el-table-column label="角色" width="100">
             <template #default="{ row }">
               <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'">
-                {{ row.role === 'ADMIN' ? '管理员' : '查看员' }}
+                {{ row.role === 'ADMIN' ? '管理员' : '普通员工' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -60,9 +60,16 @@
           <el-table-column label="创建时间" width="170">
             <template #default="{ row }">{{ row.createdAt }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="180">
+          <el-table-column label="操作" min-width="260" fixed="right">
             <template #default="{ row }">
+              <el-button type="primary" size="small" @click="openEditDialog(row)">编辑</el-button>
               <el-button type="warning" size="small" @click="openResetPassword(row)">重置密码</el-button>
+              <el-button
+                type="danger"
+                size="small"
+                :disabled="row.username === userStore.username"
+                @click="deleteUser(row)"
+              >删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -120,7 +127,7 @@
         <el-form-item label="角色" prop="role">
           <el-select v-model="addForm.role" placeholder="请选择角色" style="width: 100%">
             <el-option label="管理员" value="ADMIN" />
-            <el-option label="查看员" value="VIEWER" />
+            <el-option label="普通员工" value="VIEWER" />
           </el-select>
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
@@ -130,6 +137,25 @@
       <template #footer>
         <el-button @click="addDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submitAddUser">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑用户对话框 -->
+    <el-dialog v-model="editDialogVisible" title="编辑用户信息" width="420px" @closed="editFormRef?.clearValidate()">
+      <el-form :model="editForm" label-width="80px" :rules="editRules" ref="editFormRef">
+        <el-form-item label="用户名">
+          <el-input :model-value="currentUser?.username" disabled />
+        </el-form-item>
+        <el-form-item label="姓名" prop="realName">
+          <el-input v-model="editForm.realName" placeholder="真实姓名" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="editForm.phone" placeholder="11 位手机号" maxlength="11" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingUser" @click="submitEditUser">保存</el-button>
       </template>
     </el-dialog>
 
@@ -174,8 +200,10 @@ const notifyEmail = ref('')
 const users = ref([])
 const loadingUsers = ref(false)
 const addDialogVisible = ref(false)
+const editDialogVisible = ref(false)
 const resetDialogVisible = ref(false)
 const currentUser = ref(null)
+const savingUser = ref(false)
 
 const addFormRef = ref(null)
 const addForm = reactive({
@@ -191,6 +219,12 @@ const resetForm = reactive({
   password: '',
 })
 
+const editFormRef = ref(null)
+const editForm = reactive({
+  realName: '',
+  phone: '',
+})
+
 const addRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
@@ -204,6 +238,13 @@ const resetRules = {
   password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 6, message: '密码至少 6 位', trigger: 'blur' },
+  ],
+}
+
+const editRules = {
+  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  phone: [
+    { pattern: /^1\d{10}$/, message: '请输入正确的 11 位手机号', trigger: 'blur' },
   ],
 }
 
@@ -354,6 +395,58 @@ async function toggleStatus(row, enabled) {
   }
 }
 
+function openEditDialog(row) {
+  currentUser.value = row
+  editForm.realName = row.realName || ''
+  editForm.phone = row.phone || ''
+  editDialogVisible.value = true
+}
+
+async function submitEditUser() {
+  if (!editFormRef.value || !currentUser.value) return
+  const valid = await editFormRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  savingUser.value = true
+  try {
+    const updatedUser = await userApi.update(currentUser.value.id, { ...editForm })
+    if (currentUser.value.username === userStore.username) {
+      userStore.updateProfile(updatedUser.realName)
+    }
+    ElMessage.success('用户信息更新成功')
+    editDialogVisible.value = false
+    await loadUsers()
+  } catch (e) {
+    ElMessage.error('更新失败：' + (e.message || '未知错误'))
+  } finally {
+    savingUser.value = false
+  }
+}
+
+async function deleteUser(row) {
+  if (row.username === userStore.username) {
+    ElMessage.warning('不能删除当前登录账号')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `删除后账号“${row.username}”将无法登录，且该操作不可恢复。是否继续？`,
+      '删除用户',
+      {
+        type: 'warning',
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+      },
+    )
+    await userApi.delete(row.id)
+    ElMessage.success('用户删除成功')
+    await loadUsers()
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error('删除失败：' + (e.message || '未知错误'))
+  }
+}
+
 function openResetPassword(row) {
   currentUser.value = row
   resetForm.password = ''
@@ -374,3 +467,4 @@ async function submitResetPassword() {
   })
 }
 </script>
+
