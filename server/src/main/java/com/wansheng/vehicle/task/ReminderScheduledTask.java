@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
  * 🎯 每天凌晨 2:00 执行：
  *    扫描所有车辆的保险和年检到期日期，
  *    根据 reminder_config 表配置的提醒节点生成提醒记录，
- *    并按提醒方式（系统内 / 邮件）做"模拟发送"。
+ *    并按提醒方式发送系统内消息或邮件。
  */
 @Slf4j
 @Component
@@ -60,11 +60,12 @@ public class ReminderScheduledTask {
         this.notifyEmail = resolveNotifyEmail();
         LocalDate today = LocalDate.now();
 
-        List<Integer> insuranceNodes = loadEnabledNodeDays(0);
-        List<Integer> inspectionNodes = loadEnabledNodeDays(1);
+        List<ReminderConfig> insuranceConfigs = loadEnabledConfigs(0);
+        List<ReminderConfig> inspectionConfigs = loadEnabledConfigs(1);
 
         // 保险提醒
-        for (int nodeDays : insuranceNodes) {
+        for (ReminderConfig config : insuranceConfigs) {
+            int nodeDays = config.getNodeDays();
             LocalDate targetDate = today.plusDays(nodeDays);
             List<Vehicle> insuranceExpiring = vehicleMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle>()
@@ -73,12 +74,13 @@ public class ReminderScheduledTask {
             );
 
             for (Vehicle v : insuranceExpiring) {
-                createReminder(v, 0, nodeDays, today, resolveRemindMethod(0));
+                createReminder(v, 0, nodeDays, today, normalizeMethods(config.getRemindMethods()));
             }
         }
 
         // 年检提醒
-        for (int nodeDays : inspectionNodes) {
+        for (ReminderConfig config : inspectionConfigs) {
+            int nodeDays = config.getNodeDays();
             LocalDate targetDate = today.plusDays(nodeDays);
             List<Vehicle> inspectionExpiring = vehicleMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle>()
@@ -87,7 +89,7 @@ public class ReminderScheduledTask {
             );
 
             for (Vehicle v : inspectionExpiring) {
-                createReminder(v, 1, nodeDays, today, resolveRemindMethod(1));
+                createReminder(v, 1, nodeDays, today, normalizeMethods(config.getRemindMethods()));
             }
         }
 
@@ -101,23 +103,23 @@ public class ReminderScheduledTask {
         }
     }
 
-    private List<Integer> loadEnabledNodeDays(Integer type) {
+    private List<ReminderConfig> loadEnabledConfigs(Integer type) {
         List<ReminderConfig> configs = reminderConfigMapper.findEnabledByType(type);
         if (configs == null || configs.isEmpty()) {
-            return Arrays.stream(DEFAULT_NODES).boxed().collect(Collectors.toList());
+            return Arrays.stream(DEFAULT_NODES)
+                    .mapToObj(node -> ReminderConfig.builder()
+                            .type(type)
+                            .nodeDays(node)
+                            .enabled(1)
+                            .remindMethods("system,email")
+                            .build())
+                    .collect(Collectors.toList());
         }
-        return configs.stream()
-                .map(ReminderConfig::getNodeDays)
-                .collect(Collectors.toList());
+        return configs;
     }
 
-    private String resolveRemindMethod(Integer type) {
-        List<ReminderConfig> configs = reminderConfigMapper.findEnabledByType(type);
-        if (configs == null || configs.isEmpty()) {
-            return "system";
-        }
-        String methods = configs.get(0).getRemindMethods();
-        return methods == null || methods.isBlank() ? "system" : methods;
+    private String normalizeMethods(String methods) {
+        return methods == null || methods.isBlank() ? "system,email" : methods;
     }
 
     private void createReminder(Vehicle v, int type, int nodeDays, LocalDate today, String remindMethod) {
@@ -142,8 +144,7 @@ public class ReminderScheduledTask {
             reminderMapper.insert(reminder);
             log.info("创建系统内提醒: vehicleId={}, plate={}, type={}, nodeDays={}",
                     v.getId(), v.getPlateNumber(), type, nodeDays);
-            // 按提醒方式做"模拟发送"
-            simulateSend(remindMethod, v, type, nodeDays);
+            sendByConfiguredMethods(remindMethod, v, type, nodeDays);
         }
     }
 
@@ -153,7 +154,7 @@ public class ReminderScheduledTask {
      * - email ：通过 MailService 真实调用 QQ 邮箱 SMTP 发送邮件到统一收件邮箱。
      * - sms 等其他方式：已不再支持，忽略。
      */
-    private void simulateSend(String methods, Vehicle v, int type, int nodeDays) {
+    private void sendByConfiguredMethods(String methods, Vehicle v, int type, int nodeDays) {
         if (methods == null || methods.isBlank()) {
             return;
         }
@@ -167,11 +168,13 @@ public class ReminderScheduledTask {
             } else if ("email".equals(method)) {
                 String desc;
                 if (notifyEmail != null && !notifyEmail.isBlank()) {
-                    mailService.sendReminder(notifyEmail, plate, typeName, nodeDays);
-                    desc = String.format(
-                            "已发送邮件提醒：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点），收件人 %s",
-                            plate, typeName, nodeDays, nodeDays, notifyEmail);
-                    log.info("[邮件发送] {}", desc);
+                    boolean sent = mailService.sendReminder(notifyEmail, plate, typeName, nodeDays);
+                    desc = sent
+                            ? String.format("已发送邮件提醒：车辆 %s 的%s将在 %d 天后到期，收件人 %s",
+                                    plate, typeName, nodeDays, notifyEmail)
+                            : String.format("邮件提醒发送失败：车辆 %s 的%s将在 %d 天后到期，收件人 %s",
+                                    plate, typeName, nodeDays, notifyEmail);
+                    if (sent) log.info("[邮件发送] {}", desc); else log.warn("[邮件发送] {}", desc);
                 } else {
                     desc = String.format(
                             "未发送邮件提醒（未配置统一收件邮箱）：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点）",
@@ -181,7 +184,7 @@ public class ReminderScheduledTask {
                 operationLogMapper.insert(OperationLog.builder()
                         .userName("系统定时任务")
                         .vehicleId(v.getId())
-                        .action("EMAIL_REMINDER")
+                        .action(desc.startsWith("已发送") ? "EMAIL_REMINDER" : "EMAIL_REMINDER_FAILED")
                         .description(desc)
                         .build());
             }

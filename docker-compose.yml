@@ -26,7 +26,9 @@ services:
       - SPRING_PROFILES_ACTIVE=mysql
       - JWT_SECRET=${JWT_SECRET:-dGhpcy1pcy1hLWRldi1vbmx5LWp3dC1zZWNyZXQta2V5LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi0yMDI0}
       - MYSQL_ROOT_PASSWORD=wansheng123
-      - MAIL_FROM=${MAIL_FROM:-1277838709@qq.com}
+      - MAIL_HOST=${MAIL_HOST:-smtp.exmail.qq.com}
+      - MAIL_PORT=${MAIL_PORT:-465}
+      - MAIL_FROM=${MAIL_FROM:-zhongzhenggen@ws-chem.com}
       - MAIL_PASSWORD=${MAIL_PASSWORD}
     depends_on:
       mysql:

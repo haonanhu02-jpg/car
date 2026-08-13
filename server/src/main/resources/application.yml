@@ -37,6 +37,29 @@ spring:
       max-file-size: 10MB
       max-request-size: 20MB
 
+  # 腾讯企业邮箱 SMTP。专属密码只从服务器环境变量读取，禁止写入代码仓库。
+  mail:
+    host: ${MAIL_HOST:smtp.exmail.qq.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_FROM:zhongzhenggen@ws-chem.com}
+    password: ${MAIL_PASSWORD:}
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+        debug: false
+
+app:
+  mail:
+    from: ${MAIL_FROM:zhongzhenggen@ws-chem.com}
+
 # MyBatis-Plus 配置
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

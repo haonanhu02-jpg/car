@@ -9,18 +9,33 @@ INSERT IGNORE INTO sys_user (id, username, password, real_name, role, phone) VAL
 
 -- 提醒规则
 INSERT IGNORE INTO reminder_config (id, type, node_days, enabled, remind_methods) VALUES
-(1, 0, 30, 1, 'system'),
-(2, 0, 15, 1, 'system'),
+(1, 0, 30, 1, 'system,email'),
+(2, 0, 15, 1, 'system,email'),
 (3, 0, 7,  1, 'system,email'),
 (4, 0, 3,  1, 'system,email'),
-(5, 1, 30, 1, 'system'),
-(6, 1, 15, 1, 'system'),
+(5, 1, 30, 1, 'system,email'),
+(6, 1, 15, 1, 'system,email'),
 (7, 1, 7,  1, 'system,email'),
 (8, 1, 3,  1, 'system,email');
 
+-- 现有部署升级时仅自动启用一次；之后管理员在系统设置中的选择不会被重启覆盖。
+UPDATE reminder_config SET remind_methods = 'system,email'
+WHERE (remind_methods IS NULL OR remind_methods = 'system')
+  AND NOT EXISTS (
+      SELECT 1 FROM system_config WHERE config_key = 'email_reminder_migration_v1'
+  );
+
+INSERT IGNORE INTO system_config (config_key, config_value, description) VALUES
+('email_reminder_migration_v1', 'done', '企业邮箱提醒默认启用迁移标记');
+
 -- 统一提醒接收邮箱（保险/年检到期邮件统一发往此邮箱）
 INSERT IGNORE INTO system_config (id, config_key, config_value, description) VALUES
-(1, 'notify_email', '1277838709@qq.com', '统一提醒接收邮箱');
+(1, 'notify_email', 'zhongzhenggen@ws-chem.com', '统一提醒接收邮箱');
+
+-- 将旧版本的默认 QQ 收件地址迁移到企业邮箱；管理员自行设置过的其他地址不覆盖。
+UPDATE system_config
+SET config_value = 'zhongzhenggen@ws-chem.com', updated_at = CURRENT_TIMESTAMP
+WHERE config_key = 'notify_email' AND config_value = '1277838709@qq.com';
 
 -- 初始提醒记录（让提醒中心默认有数据可查看）
 INSERT IGNORE INTO reminders (id, vehicle_id, type, node_days, remind_date, remind_method, status, handler, handled_at) VALUES

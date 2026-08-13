@@ -176,6 +176,16 @@ CREATE TABLE IF NOT EXISTS `reminder_config` (
     UNIQUE KEY `uk_type_node` (`type`, `node_days`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提醒规则配置';
 
+CREATE TABLE IF NOT EXISTS `system_config` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `config_key` VARCHAR(50) NOT NULL,
+    `config_value` VARCHAR(255) DEFAULT NULL,
+    `description` VARCHAR(255) DEFAULT NULL,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_config_key` (`config_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统配置';
+
 -- ─────────────────────────────────────────
 --  初始化数据
 -- ─────────────────────────────────────────
@@ -186,14 +196,17 @@ INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`, `phone`) VA
 
 -- 默认提醒规则
 INSERT INTO `reminder_config` (`type`, `node_days`, `enabled`, `remind_methods`) VALUES
-(0, 30, 1, 'system'),
-(0, 15, 1, 'system'),
-(0, 7,  1, 'system,sms'),
-(0, 3,  1, 'system,sms'),
-(1, 30, 1, 'system'),
-(1, 15, 1, 'system'),
-(1, 7,  1, 'system,sms'),
-(1, 3,  1, 'system,sms');
+(0, 30, 1, 'system,email'),
+(0, 15, 1, 'system,email'),
+(0, 7,  1, 'system,email'),
+(0, 3,  1, 'system,email'),
+(1, 30, 1, 'system,email'),
+(1, 15, 1, 'system,email'),
+(1, 7,  1, 'system,email'),
+(1, 3,  1, 'system,email');
+
+INSERT INTO `system_config` (`config_key`, `config_value`, `description`) VALUES
+('notify_email', 'zhongzhenggen@ws-chem.com', '统一提醒接收邮箱');
 
 -- 示例车辆数据
 INSERT INTO `vehicles` (`plate_number`, `vehicle_type`, `brand`, `purchase_date`, `owner`, `insurance_company`, `insurance_type`, `policy_number`, `insurance_expire`, `inspection_expire`, `etc_bank`, `oil_card_number`) VALUES

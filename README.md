@@ -32,6 +32,21 @@ vehicle-management/
 docker compose up -d --build
 ```
 
+首次部署邮件提醒前，在项目根目录创建 `.env`（不要提交该文件）：
+
+```bash
+cp .env.example .env
+```
+
+填写腾讯企业邮箱的 SMTP 专属密码：
+
+```dotenv
+MAIL_FROM=zhongzhenggen@ws-chem.com
+MAIL_PASSWORD=你的企业邮箱专属密码
+```
+
+系统默认使用 `smtp.exmail.qq.com:465` SSL。部署后可在“系统设置 → 提醒规则设置”中点击“发送测试邮件”验证配置。
+
 启动完成后访问：
 
 | 服务 | 地址 |
@@ -42,8 +57,7 @@ docker compose up -d --build
 | MySQL | localhost:3306（可用 Navicat 等客户端连接） |
 
 **默认账号：**
-- 管理员：`admin` / `admin123`
-- 只读用户：`viewer` / `viewer123`
+- 管理员姓名：`钟正根`，初始密码：`admin123`
 
 停止与清理：
 ```bash

@@ -110,6 +110,7 @@ export const registrationApi = {
 export const systemConfigApi = {
   getNotifyEmail: () => http.get('/system-config/notify-email'),
   saveNotifyEmail: (email) => http.put('/system-config/notify-email', { email }),
+  testNotifyEmail: (email) => http.post('/system-config/notify-email/test', { email }),
 }
 
 /**

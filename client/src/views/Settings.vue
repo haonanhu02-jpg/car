@@ -26,7 +26,11 @@
         </el-checkbox-group>
 
         <h4>通知接收邮箱</h4>
-        <el-input v-model="notifyEmail" placeholder="到期提醒邮件统一发送到此邮箱" style="margin: 16px 0; max-width: 360px" />
+        <div class="email-setting-row">
+          <el-input v-model="notifyEmail" placeholder="到期提醒邮件统一发送到此邮箱" />
+          <el-button :loading="testingEmail" @click="testNotifyEmail">发送测试邮件</el-button>
+        </div>
+        <div class="setting-tip">邮件会在保险或年检到达启用的提醒节点时发送；SMTP 专属密码由服务器环境变量管理。</div>
 
         <el-button type="primary" @click="saveSettings" style="margin-top: 16px">保存设置</el-button>
       </el-tab-pane>
@@ -204,6 +208,7 @@ const insuranceNodes = ref([30, 15, 7, 3])
 const inspectionNodes = ref([30, 15, 7, 3])
 const remindMethods = ref(['system', 'email'])
 const notifyEmail = ref('')
+const testingEmail = ref(false)
 
 // 用户管理
 const users = ref([])
@@ -413,6 +418,22 @@ async function toggleStatus(row, enabled) {
   }
 }
 
+async function testNotifyEmail() {
+  if (!/^\S+@\S+\.\S+$/.test(notifyEmail.value)) {
+    ElMessage.warning('请输入正确的邮箱地址')
+    return
+  }
+  testingEmail.value = true
+  try {
+    await systemConfigApi.testNotifyEmail(notifyEmail.value)
+    ElMessage.success('测试邮件已发送，请检查收件箱')
+  } catch (e) {
+    ElMessage.error(e.message || '测试邮件发送失败')
+  } finally {
+    testingEmail.value = false
+  }
+}
+
 function openEditRegistration(row) {
   editingRegistrationId.value = row.id
   Object.assign(editRegistrationForm, {
@@ -512,3 +533,17 @@ async function submitResetPassword() {
   })
 }
 </script>
+
+<style scoped>
+.email-setting-row {
+  display: flex;
+  gap: 12px;
+  max-width: 520px;
+  margin: 16px 0 8px;
+}
+
+.setting-tip {
+  color: #909399;
+  font-size: 13px;
+}
+</style>
