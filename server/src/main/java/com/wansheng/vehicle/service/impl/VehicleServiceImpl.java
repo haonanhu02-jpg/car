@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 车辆管理 Service 实现
@@ -191,15 +192,24 @@ public class VehicleServiceImpl implements VehicleService {
             if (!existingList.isEmpty()) {
                 // 保留最新一条并覆盖为本次导入数据；若存在历史重复数据，将较早的记录标记为删除
                 Vehicle latest = existingList.get(existingList.size() - 1);
+                LocalDate oldInsuranceExpire = latest.getInsuranceExpire();
+                LocalDate oldInspectionExpire = latest.getInspectionExpire();
                 vehicle.setId(latest.getId());
                 vehicle.setStatus(1);
                 vehicleMapper.updateById(vehicle);
+                clearUnresolvedRemindersIfExpiryChanged(
+                        vehicle.getId(), 0, oldInsuranceExpire, vehicle.getInsuranceExpire());
+                clearUnresolvedRemindersIfExpiryChanged(
+                        vehicle.getId(), 1, oldInspectionExpire, vehicle.getInspectionExpire());
                 updated++;
                 log.info("更新车辆：{}（id={}）", vehicle.getPlateNumber(), latest.getId());
 
                 for (int i = 0; i < existingList.size() - 1; i++) {
-                    vehicleMapper.deleteById(existingList.get(i).getId());
-                    log.info("清理历史重复车辆：{}（id={}）", vehicle.getPlateNumber(), existingList.get(i).getId());
+                    Integer duplicateId = existingList.get(i).getId();
+                    reminderMapper.deleteUnresolvedByVehicleAndType(duplicateId, 0);
+                    reminderMapper.deleteUnresolvedByVehicleAndType(duplicateId, 1);
+                    vehicleMapper.deleteById(duplicateId);
+                    log.info("清理历史重复车辆：{}（id={}）", vehicle.getPlateNumber(), duplicateId);
                 }
             } else {
                 vehicle.setStatus(1);
@@ -397,6 +407,10 @@ public class VehicleServiceImpl implements VehicleService {
 
         BeanUtils.copyProperties(dto, vehicle);
         vehicleMapper.updateById(vehicle);
+        clearUnresolvedRemindersIfExpiryChanged(
+                vehicle.getId(), 0, before.getInsuranceExpire(), vehicle.getInsuranceExpire());
+        clearUnresolvedRemindersIfExpiryChanged(
+                vehicle.getId(), 1, before.getInspectionExpire(), vehicle.getInspectionExpire());
 
         saveLog("UPDATE_VEHICLE", vehicle.getId(),
                 "更新车辆：" + vehicle.getPlateNumber(),
@@ -418,6 +432,8 @@ public class VehicleServiceImpl implements VehicleService {
 
         vehicle.setStatus(0);  // 软删除
         vehicleMapper.updateById(vehicle);
+        reminderMapper.deleteUnresolvedByVehicleAndType(vehicle.getId(), 0);
+        reminderMapper.deleteUnresolvedByVehicleAndType(vehicle.getId(), 1);
 
         saveLog("DELETE_VEHICLE", vehicle.getId(),
                 "注销车辆：" + vehicle.getPlateNumber(),
@@ -454,8 +470,9 @@ public class VehicleServiceImpl implements VehicleService {
         vehicle.setInsuranceExpire(dto.getInsuranceExpire());
         vehicleMapper.updateById(vehicle);
 
-        // 4. 将相关提醒标记为已处理
-        // TODO: 更新提醒状态
+        // 4. 新保单日期生效后，旧保单产生的未处理/逾期提醒已经失效
+        clearUnresolvedRemindersIfExpiryChanged(
+                vehicleId, 0, before.getInsuranceExpire(), vehicle.getInsuranceExpire());
 
         saveLog("RENEW_INSURANCE", vehicleId,
                 "车辆 " + vehicle.getPlateNumber() + " 续保，新保单截止：" + dto.getInsuranceExpire(),
@@ -487,12 +504,26 @@ public class VehicleServiceImpl implements VehicleService {
 
         vehicle.setInspectionExpire(expireDate);
         vehicleMapper.updateById(vehicle);
+        clearUnresolvedRemindersIfExpiryChanged(
+                vehicleId, 1, before.getInspectionExpire(), vehicle.getInspectionExpire());
 
         saveLog("UPDATE_INSPECTION", vehicleId,
                 "车辆 " + vehicle.getPlateNumber() + " 更新年检，下次到期：" + expireDate,
                 before, vehicle);
         log.info("车辆 {} 年检更新成功，下次到期: {}", vehicle.getPlateNumber(), expireDate);
         return newInspection;
+    }
+
+    private void clearUnresolvedRemindersIfExpiryChanged(
+            Integer vehicleId, Integer type, LocalDate oldExpiry, LocalDate newExpiry) {
+        if (Objects.equals(oldExpiry, newExpiry)) {
+            return;
+        }
+        int deleted = reminderMapper.deleteUnresolvedByVehicleAndType(vehicleId, type);
+        if (deleted > 0) {
+            log.info("车辆到期日期已变化，清理失效提醒: vehicleId={}, type={}, count={}",
+                    vehicleId, type, deleted);
+        }
     }
 
     // ──────────────────────────────────────

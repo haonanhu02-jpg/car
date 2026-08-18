@@ -1,5 +1,6 @@
 package com.wansheng.vehicle.task;
 
+import com.wansheng.vehicle.entity.Reminder;
 import com.wansheng.vehicle.entity.ReminderConfig;
 import com.wansheng.vehicle.entity.SystemConfig;
 import com.wansheng.vehicle.entity.Vehicle;
@@ -19,6 +20,43 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ReminderScheduledTaskTest {
+
+    @Test
+    void removesUnresolvedReminderWhenVehicleExpiryDateHasChanged() {
+        VehicleMapper vehicleMapper = mock(VehicleMapper.class);
+        ReminderMapper reminderMapper = mock(ReminderMapper.class);
+        ReminderConfigMapper configMapper = mock(ReminderConfigMapper.class);
+        OperationLogMapper logMapper = mock(OperationLogMapper.class);
+        MailService mailService = mock(MailService.class);
+        SystemConfigMapper systemConfigMapper = mock(SystemConfigMapper.class);
+        ReminderScheduledTask task = new ReminderScheduledTask(
+                vehicleMapper, reminderMapper, configMapper, logMapper, mailService, systemConfigMapper);
+
+        Reminder staleReminder = Reminder.builder()
+                .id(1)
+                .vehicleId(2)
+                .type(1)
+                .nodeDays(7)
+                .remindDate(LocalDate.of(2026, 6, 23))
+                .status(2)
+                .build();
+        Vehicle vehicleWithNewExpiry = Vehicle.builder()
+                .id(2)
+                .plateNumber("浙J.5632U")
+                .inspectionExpire(LocalDate.of(2027, 6, 30))
+                .status(1)
+                .build();
+
+        when(reminderMapper.selectList(any())).thenReturn(List.of(staleReminder));
+        when(vehicleMapper.selectById(2)).thenReturn(vehicleWithNewExpiry);
+        when(vehicleMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(configMapper.findEnabledByType(anyInt())).thenReturn(Collections.emptyList());
+        when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
+
+        task.scanExpiringVehicles();
+
+        verify(reminderMapper).deleteById(1);
+    }
 
     @Test
     void usesMethodsFromTheMatchingReminderNode() {

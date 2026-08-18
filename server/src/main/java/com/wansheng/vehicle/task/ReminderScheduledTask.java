@@ -60,6 +60,10 @@ public class ReminderScheduledTask {
         this.notifyEmail = resolveNotifyEmail();
         LocalDate today = LocalDate.now();
 
+        // 车辆的到期日期可能被编辑、续保或更新年检。先清理仍指向旧截止日期的
+        // 待处理/已逾期提醒，避免提醒中心继续展示已经失效的数据。
+        removeStaleUnresolvedReminders();
+
         List<ReminderConfig> insuranceConfigs = loadEnabledConfigs(0);
         List<ReminderConfig> inspectionConfigs = loadEnabledConfigs(1);
 
@@ -101,6 +105,41 @@ public class ReminderScheduledTask {
                 reminderMapper.updateById(r);
             }
         }
+    }
+
+    private void removeStaleUnresolvedReminders() {
+        List<Reminder> unresolved = reminderMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Reminder>()
+                        .in(Reminder::getStatus, 0, 2)
+        );
+
+        for (Reminder reminder : unresolved) {
+            Vehicle vehicle = vehicleMapper.selectById(reminder.getVehicleId());
+            if (!matchesCurrentExpiry(reminder, vehicle)) {
+                reminderMapper.deleteById(reminder.getId());
+                log.info("删除失效提醒: reminderId={}, vehicleId={}, type={}, remindDate={}",
+                        reminder.getId(), reminder.getVehicleId(), reminder.getType(), reminder.getRemindDate());
+            }
+        }
+    }
+
+    private boolean matchesCurrentExpiry(Reminder reminder, Vehicle vehicle) {
+        if (vehicle == null || !Integer.valueOf(1).equals(vehicle.getStatus())
+                || reminder.getType() == null || reminder.getNodeDays() == null
+                || reminder.getRemindDate() == null) {
+            return false;
+        }
+
+        LocalDate expiry;
+        if (reminder.getType() == 0) {
+            expiry = vehicle.getInsuranceExpire();
+        } else if (reminder.getType() == 1) {
+            expiry = vehicle.getInspectionExpire();
+        } else {
+            return false;
+        }
+
+        return expiry != null && reminder.getRemindDate().equals(expiry.minusDays(reminder.getNodeDays()));
     }
 
     private List<ReminderConfig> loadEnabledConfigs(Integer type) {

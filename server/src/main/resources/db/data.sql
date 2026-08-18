@@ -37,11 +37,12 @@ UPDATE system_config
 SET config_value = 'zhongzhenggen@ws-chem.com', updated_at = CURRENT_TIMESTAMP
 WHERE config_key = 'notify_email' AND config_value = '1277838709@qq.com';
 
--- 初始提醒记录（让提醒中心默认有数据可查看）
-INSERT IGNORE INTO reminders (id, vehicle_id, type, node_days, remind_date, remind_method, status, handler, handled_at) VALUES
-(1, 2, 1, 7, '2026-06-23', 'system,email', 2, NULL, NULL),
-(2, 3, 0, 3, '2026-06-27', 'system,email', 2, NULL, NULL),
-(3, 3, 1, 3, '2026-07-28', 'system,email', 0, NULL, NULL);
+-- 清理旧版本写死的演示提醒。真实提醒由每日/手动扫描按车辆当前截止日期生成，
+-- 不能在每次应用启动时重新插入，否则车辆日期修改后旧提醒会复活。
+DELETE FROM reminders WHERE
+    (id = 1 AND vehicle_id = 2 AND type = 1 AND node_days = 7 AND remind_date = '2026-06-23')
+ OR (id = 2 AND vehicle_id = 3 AND type = 0 AND node_days = 3 AND remind_date = '2026-06-27')
+ OR (id = 3 AND vehicle_id = 3 AND type = 1 AND node_days = 3 AND remind_date = '2026-07-28');
 
 -- 示例车辆数据
 INSERT IGNORE INTO vehicles (id, plate_number, vehicle_type, brand, purchase_date, owner,
