@@ -34,10 +34,13 @@ public class Reminder {
     /** 实际提醒日期 */
     private LocalDate remindDate;
 
+    /** 本轮保险/年检截止日期，用于将多个提醒节点合并成一条待办 */
+    private LocalDate expireDate;
+
     /** 提醒方式：system/sms/email */
     private String remindMethod;
 
-    /** 状态：0-待处理, 1-已处理, 2-已逾期 */
+    /** 状态：0-待处理, 1-已处理, 2-超时未处理 */
     @Builder.Default
     private Integer status = 0;
 
@@ -46,6 +49,10 @@ public class Reminder {
 
     /** 处理时间 */
     private LocalDateTime handledAt;
+
+    /** 是否已归档：0-否，1-是 */
+    @Builder.Default
+    private Integer archived = 0;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
@@ -57,4 +64,12 @@ public class Reminder {
     /** 车牌号（联查 vehicles 表得到） */
     @TableField(exist = false)
     private String plateNumber;
+
+    /** 距离实际截止日的天数，负数表示已经过期 */
+    @TableField(exist = false)
+    private Long remainingDays;
+
+    /** 实际到期情况展示文案 */
+    @TableField(exist = false)
+    private String expireStatus;
 }

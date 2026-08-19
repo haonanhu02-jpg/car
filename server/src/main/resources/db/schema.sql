@@ -62,11 +62,14 @@ CREATE TABLE IF NOT EXISTS reminders (
     type TINYINT NOT NULL,
     node_days INT NOT NULL,
     remind_date DATE NOT NULL,
+    expire_date DATE DEFAULT NULL,
     remind_method VARCHAR(20) DEFAULT 'system',
     status TINYINT DEFAULT 0,
     handler VARCHAR(50) DEFAULT NULL,
     handled_at TIMESTAMP DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    archived TINYINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_reminder_cycle UNIQUE (vehicle_id, type, expire_date)
 );
 
 CREATE TABLE IF NOT EXISTS sys_user (

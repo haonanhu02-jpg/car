@@ -2,6 +2,7 @@ package com.wansheng.vehicle.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wansheng.vehicle.dto.VehicleDTO;
+import com.wansheng.vehicle.dto.DashboardStats;
 import com.wansheng.vehicle.entity.Vehicle;
 import com.wansheng.vehicle.repository.InspectionHistoryMapper;
 import com.wansheng.vehicle.repository.InsuranceHistoryMapper;
@@ -13,10 +14,38 @@ import com.wansheng.vehicle.service.impl.VehicleServiceImpl;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.Collections;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class VehicleServiceImplTest {
+
+    @Test
+    void dashboardCountsTodayUnresolvedRemindersInsteadOfTodayExpiringVehicles() {
+        VehicleMapper vehicleMapper = mock(VehicleMapper.class);
+        ReminderMapper reminderMapper = mock(ReminderMapper.class);
+        VehicleServiceImpl service = new VehicleServiceImpl(
+                vehicleMapper,
+                mock(InsuranceHistoryMapper.class),
+                mock(InspectionHistoryMapper.class),
+                reminderMapper,
+                mock(OperationLogMapper.class),
+                mock(SysUserMapper.class),
+                new ObjectMapper().findAndRegisterModules()
+        );
+        LocalDate today = LocalDate.now();
+        when(vehicleMapper.selectCount(any())).thenReturn(25L);
+        when(vehicleMapper.findTodayExpiring(today)).thenReturn(Collections.emptyList());
+        when(vehicleMapper.findExpiringSoon(any(), any())).thenReturn(Collections.emptyList());
+        when(vehicleMapper.findOverdue(today)).thenReturn(Collections.emptyList());
+        when(reminderMapper.selectCount(any())).thenReturn(2L);
+
+        DashboardStats stats = service.getDashboardStats();
+
+        assertThat(stats.getTodayExpiring()).isEqualTo(2);
+        verify(reminderMapper).selectCount(any());
+    }
 
     @Test
     void updatingInspectionExpiryClearsOnlyUnresolvedInspectionReminders() {

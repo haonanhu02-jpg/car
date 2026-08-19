@@ -15,7 +15,7 @@
         <div class="stat-number">{{ stats.expiringSoon }}</div>
       </div>
       <div class="stat-card danger">
-        <div class="stat-label">已逾期</div>
+        <div class="stat-label">保险/年检已过期车辆</div>
         <div class="stat-number" style="color: #ff4d4f">{{ stats.overdue }}</div>
       </div>
     </div>

@@ -83,7 +83,13 @@ public class VehicleServiceImpl implements VehicleService {
         long totalVehicles = vehicleMapper.selectCount(
             new LambdaQueryWrapper<Vehicle>().eq(Vehicle::getStatus, 1)
         );
-        long todayExpiring = vehicleMapper.findTodayExpiring(today).size();
+        // “今日到期提醒”统计今天触发且尚未处理的提醒，不等同于今天到期的车辆。
+        long todayExpiring = reminderMapper.selectCount(
+                new LambdaQueryWrapper<Reminder>()
+                        .eq(Reminder::getRemindDate, today)
+                        .in(Reminder::getStatus, 0, 2)
+                        .eq(Reminder::getArchived, 0)
+        );
         long expiringSoon = vehicleMapper.findExpiringSoon(today, deadline).size();
         long overdue = vehicleMapper.findOverdue(today).size();
 

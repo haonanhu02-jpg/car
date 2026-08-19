@@ -6,7 +6,10 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -25,6 +28,30 @@ public interface ReminderMapper extends BaseMapper<Reminder> {
     int deleteUnresolvedByVehicleAndType(@Param("vehicleId") Integer vehicleId,
                                          @Param("type") Integer type);
 
+    /** 查询同一车辆、同一提醒类型、同一截止日期对应的唯一提醒周期。 */
+    @Select("""
+        SELECT * FROM reminders
+        WHERE vehicle_id = #{vehicleId}
+          AND type = #{type}
+          AND expire_date = #{expireDate}
+        ORDER BY id DESC
+        LIMIT 1
+    """)
+    Reminder findByCycle(@Param("vehicleId") Integer vehicleId,
+                         @Param("type") Integer type,
+                         @Param("expireDate") LocalDate expireDate);
+
+    /** 将三年前已经处理的提醒转入逻辑归档，数据仍保留在数据库中。 */
+    @Update("""
+        UPDATE reminders
+        SET archived = 1
+        WHERE status = 1
+          AND archived = 0
+          AND handled_at IS NOT NULL
+          AND handled_at < #{cutoff}
+    """)
+    int archiveHandledBefore(@Param("cutoff") LocalDateTime cutoff);
+
     /**
      * 查询待处理的提醒（按紧急度排序）
      */
@@ -32,7 +59,7 @@ public interface ReminderMapper extends BaseMapper<Reminder> {
         SELECT r.*, v.plate_number
         FROM reminders r
         LEFT JOIN vehicles v ON r.vehicle_id = v.id
-        WHERE r.status = 0
+        WHERE r.status = 0 AND r.archived = 0
         ORDER BY r.remind_date ASC
     """)
     List<Reminder> findPendingReminders();

@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -56,13 +57,19 @@ public class ReminderScheduledTask {
     }
 
     @Transactional
-    public void scanExpiringVehicles() {
+    public synchronized void scanExpiringVehicles() {
         this.notifyEmail = resolveNotifyEmail();
         LocalDate today = LocalDate.now();
 
+        int archived = reminderMapper.archiveHandledBefore(LocalDateTime.now().minusYears(3));
+        if (archived > 0) {
+            log.info("已归档三年前的已处理提醒 {} 条", archived);
+        }
+
         // 车辆的到期日期可能被编辑、续保或更新年检。先清理仍指向旧截止日期的
-        // 待处理/已逾期提醒，避免提醒中心继续展示已经失效的数据。
+        // 待处理/超时未处理提醒，避免提醒中心继续展示已经失效的数据。
         removeStaleUnresolvedReminders();
+        markTimedOutReminders(today);
 
         List<ReminderConfig> insuranceConfigs = loadEnabledConfigs(0);
         List<ReminderConfig> inspectionConfigs = loadEnabledConfigs(1);
@@ -97,11 +104,13 @@ public class ReminderScheduledTask {
             }
         }
 
-        // 扫描已逾期的提醒
+    }
+
+    private void markTimedOutReminders(LocalDate today) {
         List<Reminder> pendingReminders = reminderMapper.findPendingReminders();
         for (Reminder r : pendingReminders) {
             if (r.getRemindDate().isBefore(today)) {
-                r.setStatus(2);  // 标记为已逾期
+                r.setStatus(2);  // 提醒日期已过，但事项仍未处理
                 reminderMapper.updateById(r);
             }
         }
@@ -111,6 +120,7 @@ public class ReminderScheduledTask {
         List<Reminder> unresolved = reminderMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Reminder>()
                         .in(Reminder::getStatus, 0, 2)
+                        .eq(Reminder::getArchived, 0)
         );
 
         for (Reminder reminder : unresolved) {
@@ -139,7 +149,11 @@ public class ReminderScheduledTask {
             return false;
         }
 
-        return expiry != null && reminder.getRemindDate().equals(expiry.minusDays(reminder.getNodeDays()));
+        LocalDate reminderExpiry = reminder.getExpireDate();
+        if (reminderExpiry == null) {
+            reminderExpiry = reminder.getRemindDate().plusDays(reminder.getNodeDays());
+        }
+        return expiry != null && expiry.equals(reminderExpiry);
     }
 
     private List<ReminderConfig> loadEnabledConfigs(Integer type) {
@@ -162,29 +176,50 @@ public class ReminderScheduledTask {
     }
 
     private void createReminder(Vehicle v, int type, int nodeDays, LocalDate today, String remindMethod) {
-        // 检查是否已存在相同提醒（同一辆车、同一类型、同一节点、同一天）
-        List<Reminder> existing = reminderMapper.selectList(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Reminder>()
-                .eq(Reminder::getVehicleId, v.getId())
-                .eq(Reminder::getType, type)
-                .eq(Reminder::getNodeDays, nodeDays)
-                .eq(Reminder::getRemindDate, today)
-        );
+        LocalDate expireDate = type == 0 ? v.getInsuranceExpire() : v.getInspectionExpire();
+        if (expireDate == null) {
+            return;
+        }
 
-        if (existing.isEmpty()) {
+        Reminder existing = reminderMapper.findByCycle(v.getId(), type, expireDate);
+        if (existing == null) {
             Reminder reminder = Reminder.builder()
                     .vehicleId(v.getId())
                     .type(type)
                     .nodeDays(nodeDays)
                     .remindDate(today)
+                    .expireDate(expireDate)
                     .remindMethod(remindMethod)
                     .status(0)
+                    .archived(0)
                     .build();
             reminderMapper.insert(reminder);
-            log.info("创建系统内提醒: vehicleId={}, plate={}, type={}, nodeDays={}",
-                    v.getId(), v.getPlateNumber(), type, nodeDays);
+            log.info("创建提醒周期: vehicleId={}, plate={}, type={}, expireDate={}, nodeDays={}",
+                    v.getId(), v.getPlateNumber(), type, expireDate, nodeDays);
             sendByConfiguredMethods(remindMethod, v, type, nodeDays);
+            return;
         }
+
+        // 已处理表示本轮事项已经完成，后续提醒节点不再重复通知。
+        if (Integer.valueOf(1).equals(existing.getStatus())) {
+            return;
+        }
+
+        // 同一天重复手动扫描时不重复更新，也不重复发送邮件。
+        if (Integer.valueOf(nodeDays).equals(existing.getNodeDays())
+                && today.equals(existing.getRemindDate())) {
+            return;
+        }
+
+        existing.setNodeDays(nodeDays);
+        existing.setRemindDate(today);
+        existing.setExpireDate(expireDate);
+        existing.setRemindMethod(remindMethod);
+        existing.setArchived(0);
+        reminderMapper.updateById(existing);
+        log.info("升级提醒节点: reminderId={}, vehicleId={}, type={}, expireDate={}, nodeDays={}",
+                existing.getId(), v.getId(), type, expireDate, nodeDays);
+        sendByConfiguredMethods(remindMethod, v, type, nodeDays);
     }
 
     /**
