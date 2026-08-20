@@ -1,5 +1,6 @@
 package com.wansheng.vehicle.task;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wansheng.vehicle.entity.OperationLog;
 import com.wansheng.vehicle.entity.Reminder;
 import com.wansheng.vehicle.entity.ReminderConfig;
@@ -19,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -74,36 +77,38 @@ public class ReminderScheduledTask {
         List<ReminderConfig> insuranceConfigs = loadEnabledConfigs(0);
         List<ReminderConfig> inspectionConfigs = loadEnabledConfigs(1);
 
-        // 保险提醒
-        for (ReminderConfig config : insuranceConfigs) {
-            int nodeDays = config.getNodeDays();
-            LocalDate targetDate = today.plusDays(nodeDays);
-            List<Vehicle> insuranceExpiring = vehicleMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle>()
-                    .eq(Vehicle::getInsuranceExpire, targetDate)
-                    .eq(Vehicle::getStatus, 1)
-            );
+        // 扫描全部有效车辆，而不是只查“今天刚好命中节点”的车辆。
+        // 这样新录入、日期刚修改或服务停机后恢复的车辆，即使错过了 30 天节点，
+        // 仍能在下一次扫描时补生成当前应该生效的提醒。
+        List<Vehicle> activeVehicles = vehicleMapper.selectList(
+                new LambdaQueryWrapper<Vehicle>().eq(Vehicle::getStatus, 1));
+        for (Vehicle vehicle : activeVehicles) {
+            createApplicableReminder(vehicle, 0, today, insuranceConfigs);
+            createApplicableReminder(vehicle, 1, today, inspectionConfigs);
+        }
+    }
 
-            for (Vehicle v : insuranceExpiring) {
-                createReminder(v, 0, nodeDays, today, normalizeMethods(config.getRemindMethods()));
-            }
+    private void createApplicableReminder(Vehicle vehicle, int type, LocalDate today,
+                                          List<ReminderConfig> configs) {
+        LocalDate expireDate = type == 0
+                ? vehicle.getInsuranceExpire()
+                : vehicle.getInspectionExpire();
+        if (expireDate == null) {
+            return;
         }
 
-        // 年检提醒
-        for (ReminderConfig config : inspectionConfigs) {
-            int nodeDays = config.getNodeDays();
-            LocalDate targetDate = today.plusDays(nodeDays);
-            List<Vehicle> inspectionExpiring = vehicleMapper.selectList(
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle>()
-                    .eq(Vehicle::getInspectionExpire, targetDate)
-                    .eq(Vehicle::getStatus, 1)
-            );
-
-            for (Vehicle v : inspectionExpiring) {
-                createReminder(v, 1, nodeDays, today, normalizeMethods(config.getRemindMethods()));
-            }
+        long remainingDays = ChronoUnit.DAYS.between(today, expireDate);
+        ReminderConfig applicable = configs.stream()
+                .filter(config -> config.getNodeDays() != null && config.getNodeDays() >= 0)
+                .filter(config -> remainingDays <= config.getNodeDays())
+                .min(Comparator.comparingInt(ReminderConfig::getNodeDays))
+                .orElse(null);
+        if (applicable == null) {
+            return;
         }
 
+        createReminder(vehicle, type, applicable.getNodeDays(), today,
+                normalizeMethods(applicable.getRemindMethods()));
     }
 
     private void markTimedOutReminders(LocalDate today) {
@@ -196,7 +201,7 @@ public class ReminderScheduledTask {
             reminderMapper.insert(reminder);
             log.info("创建提醒周期: vehicleId={}, plate={}, type={}, expireDate={}, nodeDays={}",
                     v.getId(), v.getPlateNumber(), type, expireDate, nodeDays);
-            sendByConfiguredMethods(remindMethod, v, type, nodeDays);
+            sendByConfiguredMethods(remindMethod, v, type, nodeDays, today);
             return;
         }
 
@@ -205,9 +210,9 @@ public class ReminderScheduledTask {
             return;
         }
 
-        // 同一天重复手动扫描时不重复更新，也不重复发送邮件。
-        if (Integer.valueOf(nodeDays).equals(existing.getNodeDays())
-                && today.equals(existing.getRemindDate())) {
+        // 当前节点已经提醒过，后续每天扫描都不重复更新或发送。
+        // 节点只允许从 30 → 15 → 7 → 3 向更紧急方向推进。
+        if (existing.getNodeDays() != null && nodeDays >= existing.getNodeDays()) {
             return;
         }
 
@@ -219,7 +224,7 @@ public class ReminderScheduledTask {
         reminderMapper.updateById(existing);
         log.info("升级提醒节点: reminderId={}, vehicleId={}, type={}, expireDate={}, nodeDays={}",
                 existing.getId(), v.getId(), type, expireDate, nodeDays);
-        sendByConfiguredMethods(remindMethod, v, type, nodeDays);
+        sendByConfiguredMethods(remindMethod, v, type, nodeDays, today);
     }
 
     /**
@@ -228,31 +233,38 @@ public class ReminderScheduledTask {
      * - email ：通过 MailService 真实调用 QQ 邮箱 SMTP 发送邮件到统一收件邮箱。
      * - sms 等其他方式：已不再支持，忽略。
      */
-    private void sendByConfiguredMethods(String methods, Vehicle v, int type, int nodeDays) {
+    private void sendByConfiguredMethods(String methods, Vehicle v, int type,
+                                         int nodeDays, LocalDate today) {
         if (methods == null || methods.isBlank()) {
             return;
         }
         String plate = v.getPlateNumber() == null ? ("车辆#" + v.getId()) : v.getPlateNumber();
         String typeName = typeLabel(type);
+        LocalDate expireDate = type == 0 ? v.getInsuranceExpire() : v.getInspectionExpire();
+        int remainingDays = expireDate == null
+                ? nodeDays
+                : Math.toIntExact(ChronoUnit.DAYS.between(today, expireDate));
 
         for (String raw : methods.split(",")) {
             String method = raw.trim();
             if ("system".equals(method)) {
-                log.info("[系统内提醒] 车辆 {} 的{}将在 {} 天后到期", plate, typeName, nodeDays);
+                log.info("[系统内提醒] 车辆 {} 的{}进入提前 {} 天节点，当前剩余 {} 天",
+                        plate, typeName, nodeDays, remainingDays);
             } else if ("email".equals(method)) {
                 String desc;
                 if (notifyEmail != null && !notifyEmail.isBlank()) {
-                    boolean sent = mailService.sendReminder(notifyEmail, plate, typeName, nodeDays);
+                    boolean sent = mailService.sendReminder(
+                            notifyEmail, plate, typeName, nodeDays, remainingDays);
                     desc = sent
-                            ? String.format("已发送邮件提醒：车辆 %s 的%s将在 %d 天后到期，收件人 %s",
-                                    plate, typeName, nodeDays, notifyEmail)
-                            : String.format("邮件提醒发送失败：车辆 %s 的%s将在 %d 天后到期，收件人 %s",
-                                    plate, typeName, nodeDays, notifyEmail);
+                            ? String.format("已发送邮件提醒：车辆 %s 的%s进入提前 %d 天节点，当前剩余 %d 天，收件人 %s",
+                                    plate, typeName, nodeDays, remainingDays, notifyEmail)
+                            : String.format("邮件提醒发送失败：车辆 %s 的%s进入提前 %d 天节点，当前剩余 %d 天，收件人 %s",
+                                    plate, typeName, nodeDays, remainingDays, notifyEmail);
                     if (sent) log.info("[邮件发送] {}", desc); else log.warn("[邮件发送] {}", desc);
                 } else {
                     desc = String.format(
-                            "未发送邮件提醒（未配置统一收件邮箱）：车辆 %s 的%s将在 %d 天后到期（提前 %d 天节点）",
-                            plate, typeName, nodeDays, nodeDays);
+                            "未发送邮件提醒（未配置统一收件邮箱）：车辆 %s 的%s进入提前 %d 天节点，当前剩余 %d 天",
+                            plate, typeName, nodeDays, remainingDays);
                     log.warn("[邮件发送] {}", desc);
                 }
                 operationLogMapper.insert(OperationLog.builder()

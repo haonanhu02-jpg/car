@@ -42,27 +42,43 @@
     <div class="table-container">
       <div class="section-header">
         <h3>⚠️ 待办提醒列表（按紧急度排序）</h3>
+        <el-button type="primary" link @click="router.push('/reminders')">
+          查看全部（{{ pendingReminderTotal }}）
+        </el-button>
       </div>
 
-      <el-table :data="expiringVehicles" stripe v-loading="loading" empty-text="暂无待办提醒 🎉">
-        <el-table-column prop="plateNumber" label="车牌号" width="120" />
-        <el-table-column prop="brand" label="品牌" width="100" />
-        <el-table-column label="到期类型" width="100">
+      <el-table :data="pendingReminders" stripe v-loading="loading" empty-text="暂无待办提醒 🎉">
+        <el-table-column label="车牌号" min-width="125">
           <template #default="{ row }">
-            <el-tag v-if="row.insuranceExpire && isExpiring(row.insuranceExpire)" type="warning" size="small">保险</el-tag>
-            <el-tag v-if="row.inspectionExpire && isExpiring(row.inspectionExpire)" type="warning" size="small" style="margin-left:4px">年检</el-tag>
+            <el-link type="primary" @click="router.push(`/vehicles/${row.vehicleId}`)">
+              {{ row.plateNumber || `车辆#${row.vehicleId}` }}
+            </el-link>
           </template>
         </el-table-column>
-        <el-table-column label="剩余/逾期天数" width="130">
+        <el-table-column label="提醒类型" width="100">
+          <template #default="{ row }">{{ row.type === 0 ? '保险' : '年检' }}</template>
+        </el-table-column>
+        <el-table-column label="当前提醒节点" width="130">
+          <template #default="{ row }">提前 {{ row.nodeDays }} 天</template>
+        </el-table-column>
+        <el-table-column label="到期日期 / 到期情况" min-width="180">
           <template #default="{ row }">
-            <span :class="getExpireClass(row)">{{ getExpireText(row) }}</span>
+            <div>{{ row.expireDate || '-' }}</div>
+            <div class="expire-state" :class="expireStateClass(row.remainingDays)">
+              {{ row.expireStatus || '-' }}
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="insuranceExpire" label="保险截止日" width="120" />
-        <el-table-column prop="inspectionExpire" label="年检截止日" width="120" />
-        <el-table-column label="操作" width="150">
+        <el-table-column prop="remindDate" label="最近提醒日期" width="130" />
+        <el-table-column label="处理状态" width="135">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="$router.push(`/vehicles/${row.id}`)">
+            <el-tag v-if="row.status === 0" type="warning">⏳ 待处理</el-tag>
+            <el-tag v-else type="danger">⏰ 超时未处理</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" @click="router.push(`/vehicles/${row.vehicleId}`)">
               去处理
             </el-button>
           </template>
@@ -75,26 +91,28 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { dashboardApi, registrationApi } from '@/api'
+import { dashboardApi, registrationApi, reminderApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
 const stats = ref({ totalVehicles: 0, todayExpiring: 0, expiringSoon: 0, overdue: 0 })
-const expiringVehicles = ref([])
+const pendingReminders = ref([])
+const pendingReminderTotal = ref(0)
 const pendingRegCount = ref(0)
 
 onMounted(async () => {
   // 主数据先加载，不受待办请求影响
   loading.value = true
   try {
-    const [s, v] = await Promise.all([
+    const [s, reminderPage] = await Promise.all([
       dashboardApi.getStatistics(),
-      dashboardApi.getExpiringVehicles(),
+      reminderApi.list({ scope: 'todo', page: 1, size: 20 }),
     ])
     stats.value = s
-    expiringVehicles.value = v
+    pendingReminders.value = reminderPage.records || []
+    pendingReminderTotal.value = reminderPage.total || 0
   } finally {
     loading.value = false
   }
@@ -114,45 +132,19 @@ function goToRegistrationApproval() {
   router.push({ path: '/settings', query: { tab: 'registration' } })
 }
 
-function isExpiring(date) {
-  if (!date) return false
-  const d = new Date(date)
-  const now = new Date()
-  const diff = Math.ceil((d - now) / (1000 * 60 * 60 * 24))
-  return diff <= 30
-}
-
-function getExpireText(row) {
-  const today = new Date()
-  const dates = []
-  if (row.insuranceExpire) dates.push(new Date(row.insuranceExpire))
-  if (row.inspectionExpire) dates.push(new Date(row.inspectionExpire))
-  if (dates.length === 0) return '正常'
-
-  const earliest = new Date(Math.min(...dates))
-  const diff = Math.ceil((earliest - today) / (1000 * 60 * 60 * 24))
-  if (diff < 0) return `已逾期 ${Math.abs(diff)} 天`
-  if (diff === 0) return '今日到期'
-  return `剩余 ${diff} 天`
-}
-
-function getExpireClass(row) {
-  const today = new Date()
-  const dates = []
-  if (row.insuranceExpire) dates.push(new Date(row.insuranceExpire))
-  if (row.inspectionExpire) dates.push(new Date(row.inspectionExpire))
-  if (dates.length === 0) return 'status-normal'
-
-  const earliest = new Date(Math.min(...dates))
-  const diff = Math.ceil((earliest - today) / (1000 * 60 * 60 * 24))
-  if (diff < 0) return 'status-overdue'
-  if (diff <= 30) return 'status-expiring'
-  return 'status-normal'
+function expireStateClass(remainingDays) {
+  if (remainingDays == null) return ''
+  if (remainingDays < 0) return 'is-overdue'
+  if (remainingDays <= 30) return 'is-warning'
+  return 'is-normal'
 }
 </script>
 
 <style scoped>
 .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 16px;
 }
 
@@ -212,5 +204,22 @@ function getExpireClass(row) {
 
 .todo-action {
   margin-left: 8px;
+}
+
+.expire-state {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.expire-state.is-overdue {
+  color: #f56c6c;
+}
+
+.expire-state.is-warning {
+  color: #e6a23c;
+}
+
+.expire-state.is-normal {
+  color: #67c23a;
 }
 </style>

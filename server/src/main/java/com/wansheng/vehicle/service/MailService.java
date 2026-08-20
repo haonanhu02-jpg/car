@@ -28,6 +28,15 @@ public class MailService {
      * @return 发送成功返回 true；失败返回 false，避免操作日志误报成功。
      */
     public boolean sendReminder(String to, String plate, String typeName, int nodeDays) {
+        return sendReminder(to, plate, typeName, nodeDays, nodeDays);
+    }
+
+    /**
+     * 发送提醒节点邮件，并区分配置节点与扫描时的实际剩余天数。
+     * 错过节点后补发时，例如“提前30天节点、当前剩余20天”，邮件内容仍保持准确。
+     */
+    public boolean sendReminder(String to, String plate, String typeName,
+                                int nodeDays, int remainingDays) {
         if (to == null || to.isBlank()) {
             log.warn("未配置收件邮箱，跳过邮件发送");
             return false;
@@ -37,9 +46,10 @@ public class MailService {
             msg.setFrom(from);
             msg.setTo(to.trim());
             msg.setSubject("【万盛车辆管理】" + typeName + "到期提醒");
-            msg.setText(buildContent(plate, typeName, nodeDays));
+            msg.setText(buildContent(plate, typeName, nodeDays, remainingDays));
             mailSender.send(msg);
-            log.info("邮件已发送至 {}：车辆 {} 的{}将在 {} 天后到期", to, plate, typeName, nodeDays);
+            log.info("邮件已发送至 {}：车辆 {} 的{}进入提前 {} 天节点，当前状态：{}",
+                    to, plate, typeName, nodeDays, expiryStatus(remainingDays));
             return true;
         } catch (Exception e) {
             log.error("邮件发送失败 to={}, plate={}, reason={}", to, plate, e.getMessage());
@@ -67,15 +77,25 @@ public class MailService {
         }
     }
 
-    private String buildContent(String plate, String typeName, int nodeDays) {
+    private String buildContent(String plate, String typeName, int nodeDays, int remainingDays) {
         return "尊敬的万盛车辆管理员：\n\n" +
                 "您好！系统检测到以下车辆即将到期，请及时处理：\n\n" +
                 "车辆车牌：" + plate + "\n" +
                 "提醒事项：" + typeName + "\n" +
                 "到期节点：提前 " + nodeDays + " 天\n" +
-                "预计状态：将在 " + nodeDays + " 天后到期\n\n" +
+                "当前状态：" + expiryStatus(remainingDays) + "\n\n" +
                 "请登录万盛车辆管理系统查看详情并安排办理。\n\n" +
                 "本邮件由系统自动发送，请勿直接回复。\n" +
                 "万盛股份 · 车辆管理系统";
+    }
+
+    private String expiryStatus(int remainingDays) {
+        if (remainingDays < 0) {
+            return "已过期 " + Math.abs(remainingDays) + " 天";
+        }
+        if (remainingDays == 0) {
+            return "今日到期";
+        }
+        return "将在 " + remainingDays + " 天后到期";
     }
 }

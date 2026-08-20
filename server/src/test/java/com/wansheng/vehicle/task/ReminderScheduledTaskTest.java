@@ -23,6 +23,133 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ReminderScheduledTaskTest {
 
     @Test
+    void missedThirtyDayNodeIsBackfilledBeforeTheNextExactNode() {
+        VehicleMapper vehicleMapper = mock(VehicleMapper.class);
+        ReminderMapper reminderMapper = mock(ReminderMapper.class);
+        ReminderConfigMapper configMapper = mock(ReminderConfigMapper.class);
+        ReminderScheduledTask task = new ReminderScheduledTask(
+                vehicleMapper,
+                reminderMapper,
+                configMapper,
+                mock(OperationLogMapper.class),
+                mock(MailService.class),
+                mock(SystemConfigMapper.class));
+
+        LocalDate today = LocalDate.now();
+        LocalDate expiry = today.plusDays(20);
+        Vehicle vehicle = Vehicle.builder()
+                .id(17).plateNumber("浙J.N8174")
+                .insuranceExpire(expiry).status(1).build();
+        when(configMapper.findEnabledByType(0)).thenReturn(List.of(
+                reminderConfig(0, 30), reminderConfig(0, 15),
+                reminderConfig(0, 7), reminderConfig(0, 3)));
+        when(configMapper.findEnabledByType(1)).thenReturn(List.of(reminderConfig(1, 30)));
+        when(reminderMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
+        when(vehicleMapper.selectList(any())).thenAnswer(invocation -> {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle> wrapper =
+                    invocation.getArgument(0);
+            boolean exactDateQuery = wrapper.getParamNameValuePairs().values().stream()
+                    .anyMatch(LocalDate.class::isInstance);
+            return exactDateQuery ? Collections.emptyList() : List.of(vehicle);
+        });
+
+        task.scanExpiringVehicles();
+
+        verify(reminderMapper).insert(argThat(reminder -> {
+            assertThat(reminder.getVehicleId()).isEqualTo(17);
+            assertThat(reminder.getType()).isEqualTo(0);
+            assertThat(reminder.getNodeDays()).isEqualTo(30);
+            assertThat(reminder.getRemindDate()).isEqualTo(today);
+            assertThat(reminder.getExpireDate()).isEqualTo(expiry);
+            assertThat(reminder.getStatus()).isEqualTo(0);
+            return true;
+        }));
+    }
+
+    @Test
+    void repeatedDailyScanWithinTheSameNodeDoesNotResendTheReminder() {
+        VehicleMapper vehicleMapper = mock(VehicleMapper.class);
+        ReminderMapper reminderMapper = mock(ReminderMapper.class);
+        ReminderConfigMapper configMapper = mock(ReminderConfigMapper.class);
+        MailService mailService = mock(MailService.class);
+        ReminderScheduledTask task = new ReminderScheduledTask(
+                vehicleMapper,
+                reminderMapper,
+                configMapper,
+                mock(OperationLogMapper.class),
+                mailService,
+                mock(SystemConfigMapper.class));
+
+        LocalDate today = LocalDate.now();
+        LocalDate expiry = today.plusDays(20);
+        Vehicle vehicle = Vehicle.builder()
+                .id(17).plateNumber("浙J.N8174")
+                .insuranceExpire(expiry).status(1).build();
+        Reminder existing = Reminder.builder()
+                .id(170).vehicleId(17).type(0).nodeDays(30)
+                .remindDate(today.minusDays(1)).expireDate(expiry)
+                .remindMethod("system,email").status(2).archived(0).build();
+        when(configMapper.findEnabledByType(0)).thenReturn(List.of(reminderConfig(0, 30)));
+        when(configMapper.findEnabledByType(1)).thenReturn(List.of(reminderConfig(1, 30)));
+        when(reminderMapper.selectList(any())).thenReturn(List.of(existing));
+        when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
+        when(reminderMapper.findByCycle(17, 0, expiry)).thenReturn(existing);
+        when(vehicleMapper.selectById(17)).thenReturn(vehicle);
+        when(vehicleMapper.selectList(any())).thenAnswer(invocation -> {
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Vehicle> wrapper =
+                    invocation.getArgument(0);
+            boolean exactDateQuery = wrapper.getParamNameValuePairs().values().stream()
+                    .anyMatch(LocalDate.class::isInstance);
+            return exactDateQuery ? Collections.emptyList() : List.of(vehicle);
+        });
+
+        task.scanExpiringVehicles();
+
+        verify(reminderMapper, never()).insert(any());
+        verify(reminderMapper, never()).updateById(any());
+        verify(mailService, never()).sendReminder(
+                anyString(), anyString(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
+    void catchUpScanDoesNotReopenAHandledReminderForTheSameExpiryCycle() {
+        VehicleMapper vehicleMapper = mock(VehicleMapper.class);
+        ReminderMapper reminderMapper = mock(ReminderMapper.class);
+        ReminderConfigMapper configMapper = mock(ReminderConfigMapper.class);
+        MailService mailService = mock(MailService.class);
+        ReminderScheduledTask task = new ReminderScheduledTask(
+                vehicleMapper,
+                reminderMapper,
+                configMapper,
+                mock(OperationLogMapper.class),
+                mailService,
+                mock(SystemConfigMapper.class));
+
+        LocalDate expiry = LocalDate.now().plusDays(20);
+        Vehicle vehicle = Vehicle.builder()
+                .id(18).plateNumber("浙J.DONE18")
+                .insuranceExpire(expiry).status(1).build();
+        Reminder handled = Reminder.builder()
+                .id(180).vehicleId(18).type(0).nodeDays(30)
+                .remindDate(LocalDate.now().minusDays(1)).expireDate(expiry)
+                .status(1).archived(0).build();
+        when(configMapper.findEnabledByType(0)).thenReturn(List.of(reminderConfig(0, 30)));
+        when(configMapper.findEnabledByType(1)).thenReturn(List.of(reminderConfig(1, 30)));
+        when(reminderMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
+        when(reminderMapper.findByCycle(18, 0, expiry)).thenReturn(handled);
+        when(vehicleMapper.selectList(any())).thenReturn(List.of(vehicle));
+
+        task.scanExpiringVehicles();
+
+        verify(reminderMapper, never()).insert(any());
+        verify(reminderMapper, never()).updateById(any());
+        verify(mailService, never()).sendReminder(
+                anyString(), anyString(), anyString(), anyInt(), anyInt());
+    }
+
+    @Test
     void repeatedScanOnTheSameNodeDoesNotSendDuplicateNotification() {
         VehicleMapper vehicleMapper = mock(VehicleMapper.class);
         ReminderMapper reminderMapper = mock(ReminderMapper.class);
@@ -61,7 +188,8 @@ class ReminderScheduledTaskTest {
         task.scanExpiringVehicles();
 
         verify(reminderMapper, never()).insert(any());
-        verify(mailService, never()).sendReminder(anyString(), anyString(), anyString(), anyInt());
+        verify(mailService, never()).sendReminder(
+                anyString(), anyString(), anyString(), anyInt(), anyInt());
     }
 
     @Test
@@ -99,7 +227,8 @@ class ReminderScheduledTaskTest {
         when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
         when(systemConfigMapper.selectOne(any())).thenReturn(
                 config("notify_email", "zhongzhenggen@ws-chem.com"));
-        when(mailService.sendReminder(anyString(), anyString(), anyString(), anyInt())).thenReturn(true);
+        when(mailService.sendReminder(
+                anyString(), anyString(), anyString(), anyInt(), anyInt())).thenReturn(true);
 
         task.scanExpiringVehicles();
 
@@ -111,7 +240,8 @@ class ReminderScheduledTaskTest {
             assertThat(reminder.getStatus()).isEqualTo(2);
             return true;
         }));
-        verify(mailService).sendReminder("zhongzhenggen@ws-chem.com", "浙J.TEST8", "保险", 15);
+        verify(mailService).sendReminder(
+                "zhongzhenggen@ws-chem.com", "浙J.TEST8", "保险", 15, 15);
     }
 
     @Test
@@ -174,17 +304,18 @@ class ReminderScheduledTaskTest {
         Vehicle vehicle = Vehicle.builder()
                 .id(1).plateNumber("浙J.U0055")
                 .insuranceExpire(LocalDate.now().plusDays(7)).status(1).build();
-        when(vehicleMapper.selectList(any()))
-                .thenReturn(Collections.emptyList(), List.of(vehicle), Collections.emptyList());
+        when(vehicleMapper.selectList(any())).thenReturn(List.of(vehicle));
         when(reminderMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(reminderMapper.findPendingReminders()).thenReturn(Collections.emptyList());
         when(systemConfigMapper.selectOne(any())).thenReturn(
                 config("notify_email", "zhongzhenggen@ws-chem.com"));
-        when(mailService.sendReminder(anyString(), anyString(), anyString(), anyInt())).thenReturn(true);
+        when(mailService.sendReminder(
+                anyString(), anyString(), anyString(), anyInt(), anyInt())).thenReturn(true);
 
         task.scanExpiringVehicles();
 
-        verify(mailService).sendReminder("zhongzhenggen@ws-chem.com", "浙J.U0055", "保险", 7);
+        verify(mailService).sendReminder(
+                "zhongzhenggen@ws-chem.com", "浙J.U0055", "保险", 7, 7);
         verify(logMapper).insert(argThat(log -> "EMAIL_REMINDER".equals(log.getAction())));
     }
 
@@ -193,5 +324,14 @@ class ReminderScheduledTaskTest {
         config.setConfigKey(key);
         config.setConfigValue(value);
         return config;
+    }
+
+    private ReminderConfig reminderConfig(int type, int nodeDays) {
+        return ReminderConfig.builder()
+                .type(type)
+                .nodeDays(nodeDays)
+                .enabled(1)
+                .remindMethods("system")
+                .build();
     }
 }

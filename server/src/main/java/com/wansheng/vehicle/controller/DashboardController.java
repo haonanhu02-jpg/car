@@ -30,7 +30,7 @@ public class DashboardController {
         return ApiResponse.success(vehicleService.getDashboardStats());
     }
 
-    @Operation(summary = "获取即将到期/已逾期车辆列表（待办提醒）")
+    @Operation(summary = "获取即将到期/已逾期车辆风险列表")
     @GetMapping("/expiring")
     public ApiResponse<List<Vehicle>> expiringVehicles() {
         return ApiResponse.success(vehicleService.getExpiringVehicles());

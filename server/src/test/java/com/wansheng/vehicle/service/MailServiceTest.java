@@ -2,6 +2,7 @@ package com.wansheng.vehicle.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -40,5 +41,18 @@ class MailServiceTest {
                 "zhongzhenggen@ws-chem.com", "浙J.U0055", "保险", 7);
 
         assertThat(sent).isFalse();
+    }
+
+    @Test
+    void catchUpReminderShowsConfiguredNodeAndActualRemainingDays() {
+        mailService.sendReminder(
+                "zhongzhenggen@ws-chem.com", "浙J.N8174", "保险", 30, 20);
+
+        ArgumentCaptor<SimpleMailMessage> messageCaptor =
+                ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(messageCaptor.capture());
+        assertThat(messageCaptor.getValue().getText())
+                .contains("到期节点：提前 30 天")
+                .contains("当前状态：将在 20 天后到期");
     }
 }
